@@ -32,7 +32,7 @@ export default function UserTypeSelection() {
             cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', marginBottom: '16px'
           }}
         >
-          <ArrowLeft size={16} /> Back to Welcome
+          <ArrowLeft size={16} /> {t('backToWelcome')}
         </button>
 
         <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>
@@ -113,7 +113,7 @@ export default function UserTypeSelection() {
             onClick={() => navigate('/admin/login')}
             style={{ border: 'none', background: 'none', color: '#64748b', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
           >
-            Are you a Platform Administrator? Sign In Here →
+            {t('adminSignInPrompt')}
           </button>
         </div>
       </div>

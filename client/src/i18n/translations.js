@@ -1,6 +1,6 @@
 export const translations = {
   en: {
-    welcomeTitle: "Welcome to Rewardify",
+    welcomeTitle: "Welcome to VIP'S",
     welcomeSubtitle: "Watch Ads • Earn Points • Unlock Physical Shop Discounts",
     getStarted: "Get Started",
     selectLanguage: "Select Language",
@@ -48,10 +48,113 @@ export const translations = {
     logout: "Sign Out",
     supportComplaints: "Help & Complaints",
     favoriteMerchants: "Favorite Merchants",
-    myQrCode: "My QR Code"
+    myQrCode: "My QR Code",
+
+    // ---- Welcome screen ----
+    productionReadyMultiLang: "Production-Ready & Multi-Language",
+
+    // ---- User type selection ----
+    backToWelcome: "Back to Welcome",
+    adminSignInPrompt: "Are you a Platform Administrator? Sign In Here →",
+
+    // ---- Portal / login selector ----
+    portalSelection: "Portal Selection",
+    portalSelectionSubtitle: "Select your account portal below to sign in.",
+    customerRoleBadge: "Customer Role",
+    customerAppTitle: "Customer App",
+    customerAppDesc: "Watch simulated advertisements, earn reward points, browse physical store offers, and generate redemption QR codes.",
+    customerSignIn: "Customer Sign In",
+    shopMerchantBadge: "NEW: Shop / Merchant",
+    shopPortalTitle: "Shop / Merchant Portal",
+    shopPortalDesc: "For physical shop owners. Scan customer QR codes, verify discount eligibility with Wrong Shop protection, and approve redemptions.",
+    shopMerchantSignIn: "Shop Merchant Sign In",
+    adminDashboardTitle: "Admin Dashboard",
+    adminDashboardDesc: "Super administrator panel to manage customers, partner shops, discount offers, platform reward rules, and analytics.",
+    adminSignIn: "Admin Sign In",
+
+    // ---- Customer login ----
+    customerLoginTagline: "Watch Ads • Earn Points • Unlock Shop Discounts",
+    password: "Password",
+    pleaseWait: "Please wait...",
+    createAndStartEarning: "Create Account & Start Earning",
+    signInToAccount: "Sign In to Account",
+    toggleToSignIn: "Already have an account? Sign In",
+    toggleToRegister: "Don't have an account? Create Account",
+    switchToAdminPortal: "Switch to Admin Portal Login →",
+
+    // ---- Shop / merchant login ----
+    merchantStoreLogin: "Merchant Store Login",
+    merchantLoginSubtitle: "Verify customer reward QR codes & approve physical store discounts",
+    otpMethodLabel: "📱 Mobile Number + OTP",
+    passwordMethodLabel: "🔑 Email / Password",
+    registeredMobile: "Registered Mobile Number",
+    resend: "Resend",
+    enter6DigitOtp: "Enter 6-Digit OTP",
+    verifyingMerchantOtp: "Verifying Merchant OTP...",
+    verifyOtpSignIn: "Verify OTP & Sign In",
+    shopEmailOrMobile: "Shop Email or Mobile Number",
+    authenticatingMerchant: "Authenticating Merchant...",
+    signInWithPassword: "Sign In with Password",
+    customerAppLink: "Customer App →",
+    adminPortalLink: "Admin Portal →",
+    enterMobileError: "Please enter mobile number",
+    enterOtpError: "Please enter 6-digit OTP code",
+
+    // ---- Admin login ----
+    adminManagementPortal: "Admin Management Portal",
+    authorizedAdminOnly: "Authorized Administrator Sign-in Only",
+    adminEmail: "Admin Email",
+    authenticatingAdmin: "Authenticating Admin...",
+    signInToAdminDashboard: "Sign In to Admin Dashboard",
+    switchToCustomerLogin: "← Switch to Customer App Login",
+
+    // ---- Customer layout / nav ----
+    physicalShopDiscounts: "Physical Shop Discounts",
+    navHome: "Home",
+    navOffers: "Offers",
+    navWallet: "Wallet",
+    navHistory: "History",
+    navProfile: "Profile",
+    ptsSuffix: "Pts",
+
+    // ---- Shop layout / nav ----
+    physicalVerifier: "Physical Verifier",
+    shopMerchantFallback: "Shop Merchant",
+    shopStoreFallback: "Shop Store",
+    navScanQr: "Scan QR",
+    navBill: "Bill",
+    navProducts: "Products",
+    signOutMerchant: "Sign Out Merchant Account",
+
+    // ---- Admin layout / nav ----
+    superAdmin: "Super Admin",
+    platformControlPanel: "Platform Control Panel",
+    navDashboardOverview: "Dashboard Overview",
+    navMerchantVerification: "Merchant Verification Queue",
+    navCustomersManagement: "Customers Management",
+    navShopsMerchants: "Shops & Merchants",
+    navDiscountOffers: "Discount Offers",
+    navAuditTransactions: "Audit Transactions",
+    navPlatformSettings: "Platform Settings",
+    signOutAdmin: "Sign Out Admin",
+
+    // ---- Customer home: location & nearby ----
+    locActive: "Device Location Active",
+    locObtaining: "Obtaining Device Location...",
+    locDenied: "Location Permission Denied",
+    locSetup: "Current Location Setup",
+    locGrantedSub: "Nearby shops are dynamically sorted using your device location.",
+    locPromptSub: "Allow location access to discover shops near your exact position.",
+    locRefresh: "Refresh Location",
+    locEnable: "Enable Location",
+    locLocating: "Locating...",
+    locDeniedMsg: "Location permission was denied. Nearby shops are calculated from fallback location.",
+    locUnavailableMsg: "Unable to retrieve current location.",
+    locDeniedHelp: "If location was permanently denied on Android: open Settings > Apps > {app} > Permissions > Location and choose \"Allow while using the app\".",
+    viewOffers: "View Offers"
   },
   hi: {
-    welcomeTitle: "रिवॉर्डिफ़ाई में आपका स्वागत है",
+    welcomeTitle: "VIP'S में आपका स्वागत है",
     welcomeSubtitle: "विज्ञापन देखें • पॉइंट्स कमाएं • दुकान छूट अनलॉक करें",
     getStarted: "शुरू करें",
     selectLanguage: "भाषा चुनें",
@@ -99,10 +202,113 @@ export const translations = {
     logout: "साइन आउट",
     supportComplaints: "सहायता और शिकायतें",
     favoriteMerchants: "पसंदीदा दुकानें",
-    myQrCode: "मेरा QR कोड"
+    myQrCode: "मेरा QR कोड",
+
+    // ---- Welcome screen ----
+    productionReadyMultiLang: "प्रोडक्शन-रेडी और बहु-भाषी",
+
+    // ---- User type selection ----
+    backToWelcome: "स्वागत पृष्ठ पर वापस जाएं",
+    adminSignInPrompt: "क्या आप प्लेटफ़ॉर्म प्रशासक हैं? यहां साइन इन करें →",
+
+    // ---- Portal / login selector ----
+    portalSelection: "पोर्टल चयन",
+    portalSelectionSubtitle: "साइन इन करने के लिए नीचे अपना पोर्टल चुनें।",
+    customerRoleBadge: "ग्राहक भूमिका",
+    customerAppTitle: "ग्राहक ऐप",
+    customerAppDesc: "सिम्युलेटेड विज्ञापन देखें, रिवॉर्ड पॉइंट्स कमाएं, नजदीकी दुकानों के ऑफर देखें और रिडेम्पशन QR कोड बनाएं।",
+    customerSignIn: "ग्राहक साइन इन",
+    shopMerchantBadge: "नया: दुकान / मर्चेंट",
+    shopPortalTitle: "दुकान / मर्चेंट पोर्टल",
+    shopPortalDesc: "भौतिक दुकान मालिकों के लिए। ग्राहक QR कोड स्कैन करें, गलत दुकान सुरक्षा के साथ छूट पात्रता सत्यापित करें और रिडेम्पशन स्वीकृत करें।",
+    shopMerchantSignIn: "दुकान मर्चेंट साइन इन",
+    adminDashboardTitle: "एडमिन डैशबोर्ड",
+    adminDashboardDesc: "ग्राहकों, साझेदार दुकानों, छूट ऑफर, प्लेटफ़ॉर्म रिवॉर्ड नियम और एनालिटिक्स प्रबंधित करने के लिए सुपर एडमिन पैनल।",
+    adminSignIn: "एडमिन साइन इन",
+
+    // ---- Customer login ----
+    customerLoginTagline: "विज्ञापन देखें • पॉइंट्स कमाएं • दुकान छूट अनलॉक करें",
+    password: "पासवर्ड",
+    pleaseWait: "कृपया प्रतीक्षा करें...",
+    createAndStartEarning: "खाता बनाएं और कमाना शुरू करें",
+    signInToAccount: "खाते में साइन इन करें",
+    toggleToSignIn: "पहले से खाता है? साइन इन करें",
+    toggleToRegister: "खाता नहीं है? नया खाता बनाएं",
+    switchToAdminPortal: "एडमिन पोर्टल लॉगिन पर जाएं →",
+
+    // ---- Shop / merchant login ----
+    merchantStoreLogin: "मर्चेंट स्टोर लॉगिन",
+    merchantLoginSubtitle: "ग्राहक रिवॉर्ड QR कोड सत्यापित करें और दुकान छूट स्वीकृत करें",
+    otpMethodLabel: "📱 मोबाइल नंबर + OTP",
+    passwordMethodLabel: "🔑 ईमेल / पासवर्ड",
+    registeredMobile: "पंजीकृत मोबाइल नंबर",
+    resend: "पुनः भेजें",
+    enter6DigitOtp: "6-अंकों का OTP दर्ज करें",
+    verifyingMerchantOtp: "मर्चेंट OTP सत्यापित हो रहा है...",
+    verifyOtpSignIn: "OTP सत्यापित करें और साइन इन करें",
+    shopEmailOrMobile: "दुकान ईमेल या मोबाइल नंबर",
+    authenticatingMerchant: "मर्चेंट प्रमाणित हो रहा है...",
+    signInWithPassword: "पासवर्ड से साइन इन करें",
+    customerAppLink: "ग्राहक ऐप →",
+    adminPortalLink: "एडमिन पोर्टल →",
+    enterMobileError: "कृपया मोबाइल नंबर दर्ज करें",
+    enterOtpError: "कृपया 6-अंकों का OTP कोड दर्ज करें",
+
+    // ---- Admin login ----
+    adminManagementPortal: "एडमिन प्रबंधन पोर्टल",
+    authorizedAdminOnly: "केवल अधिकृत प्रशासक साइन-इन",
+    adminEmail: "एडमिन ईमेल",
+    authenticatingAdmin: "एडमिन प्रमाणित हो रहा है...",
+    signInToAdminDashboard: "एडमिन डैशबोर्ड में साइन इन करें",
+    switchToCustomerLogin: "← ग्राहक ऐप लॉगिन पर जाएं",
+
+    // ---- Customer layout / nav ----
+    physicalShopDiscounts: "दुकान छूट",
+    navHome: "होम",
+    navOffers: "ऑफर",
+    navWallet: "वॉलेट",
+    navHistory: "इतिहास",
+    navProfile: "प्रोफ़ाइल",
+    ptsSuffix: "पॉइंट्स",
+
+    // ---- Shop layout / nav ----
+    physicalVerifier: "फिजिकल वेरिफायर",
+    shopMerchantFallback: "दुकान मर्चेंट",
+    shopStoreFallback: "दुकान स्टोर",
+    navScanQr: "QR स्कैन",
+    navBill: "बिल",
+    navProducts: "उत्पाद",
+    signOutMerchant: "मर्चेंट खाते से साइन आउट",
+
+    // ---- Admin layout / nav ----
+    superAdmin: "सुपर एडमिन",
+    platformControlPanel: "प्लेटफ़ॉर्म कंट्रोल पैनल",
+    navDashboardOverview: "डैशबोर्ड अवलोकन",
+    navMerchantVerification: "मर्चेंट सत्यापन कतार",
+    navCustomersManagement: "ग्राहक प्रबंधन",
+    navShopsMerchants: "दुकानें और मर्चेंट",
+    navDiscountOffers: "छूट ऑफर",
+    navAuditTransactions: "ऑडिट लेनदेन",
+    navPlatformSettings: "प्लेटफ़ॉर्म सेटिंग्स",
+    signOutAdmin: "एडमिन साइन आउट",
+
+    // ---- Customer home: location & nearby ----
+    locActive: "डिवाइस स्थान सक्रिय",
+    locObtaining: "डिवाइस स्थान प्राप्त हो रहा है...",
+    locDenied: "स्थान अनुमति अस्वीकृत",
+    locSetup: "वर्तमान स्थान सेटअप",
+    locGrantedSub: "आपके डिवाइस स्थान का उपयोग करके नजदीकी दुकानें क्रमबद्ध की जाती हैं।",
+    locPromptSub: "अपने सटीक स्थान के पास दुकानें खोजने के लिए स्थान एक्सेस की अनुमति दें।",
+    locRefresh: "स्थान रिफ्रेश करें",
+    locEnable: "स्थान सक्षम करें",
+    locLocating: "ढूंढ रहे हैं...",
+    locDeniedMsg: "स्थान अनुमति अस्वीकृत कर दी गई। नजदीकी दुकानें फ़ॉलबैक स्थान से गणना की जाती हैं।",
+    locUnavailableMsg: "वर्तमान स्थान प्राप्त करने में असमर्थ।",
+    locDeniedHelp: "यदि Android में स्थान स्थायी रूप से अस्वीकृत है: सेटिंग्स > ऐप्स > {app} > अनुमतियां > स्थान खोलें और \"ऐप का उपयोग करते समय अनुमति दें\" चुनें।",
+    viewOffers: "ऑफर देखें"
   },
   mr: {
-    welcomeTitle: "रिवॉर्डिफाय मध्ये आपले स्वागत आहे",
+    welcomeTitle: "VIP'S मध्ये आपले स्वागत आहे",
     welcomeSubtitle: "जाहिराती पहा • पॉईंट्स कमवा • दुकानातील सवलती मिळवा",
     getStarted: "सुरू करा",
     selectLanguage: "भाषा निवडा",
@@ -150,6 +356,109 @@ export const translations = {
     logout: "लॉग आउट करा",
     supportComplaints: "मदत आणि तक्रारी",
     favoriteMerchants: "आवडती दुकाने",
-    myQrCode: "माझा QR कोड"
+    myQrCode: "माझा QR कोड",
+
+    // ---- Welcome screen ----
+    productionReadyMultiLang: "प्रोडक्शन-रेडी आणि बहु-भाषिक",
+
+    // ---- User type selection ----
+    backToWelcome: "स्वागत पृष्ठावर परत जा",
+    adminSignInPrompt: "आपण प्लॅटफॉर्म प्रशासक आहात? येथे साइन इन करा →",
+
+    // ---- Portal / login selector ----
+    portalSelection: "पोर्टल निवड",
+    portalSelectionSubtitle: "साइन इन करण्यासाठी खालील आपले पोर्टल निवडा.",
+    customerRoleBadge: "ग्राहक भूमिका",
+    customerAppTitle: "ग्राहक ॲप",
+    customerAppDesc: "सिम्युलेटेड जाहिराती पहा, रिवॉर्ड पॉईंट्स कमवा, जवळील दुकानांच्या ऑफर्स पहा आणि रिडेम्पशन QR कोड तयार करा.",
+    customerSignIn: "ग्राहक साइन इन",
+    shopMerchantBadge: "नवीन: दुकान / व्यापारी",
+    shopPortalTitle: "दुकान / व्यापारी पोर्टल",
+    shopPortalDesc: "प्रत्यक्ष दुकान मालकांसाठी. ग्राहक QR कोड स्कॅन करा, चुकीचे दुकान संरक्षणासह सवलत पात्रता तपासा आणि रिडेम्पशन मंजूर करा.",
+    shopMerchantSignIn: "दुकान व्यापारी साइन इन",
+    adminDashboardTitle: "ॲडमिन डॅशबोर्ड",
+    adminDashboardDesc: "ग्राहक, भागीदार दुकाने, सवलत ऑफर्स, प्लॅटफॉर्म रिवॉर्ड नियम आणि विश्लेषण व्यवस्थापित करण्यासाठी सुपर ॲडमिन पॅनेल.",
+    adminSignIn: "ॲडमिन साइन इन",
+
+    // ---- Customer login ----
+    customerLoginTagline: "जाहिराती पहा • पॉईंट्स कमवा • दुकान सवलती मिळवा",
+    password: "पासवर्ड",
+    pleaseWait: "कृपया प्रतीक्षा करा...",
+    createAndStartEarning: "खाते तयार करा आणि कमवायला सुरुवात करा",
+    signInToAccount: "खात्यात साइन इन करा",
+    toggleToSignIn: "आधीच खाते आहे? साइन इन करा",
+    toggleToRegister: "खाते नाही? नवीन खाते तयार करा",
+    switchToAdminPortal: "ॲडमिन पोर्टल लॉगिनवर जा →",
+
+    // ---- Shop / merchant login ----
+    merchantStoreLogin: "व्यापारी स्टोअर लॉगिन",
+    merchantLoginSubtitle: "ग्राहक रिवॉर्ड QR कोड तपासा आणि दुकान सवलती मंजूर करा",
+    otpMethodLabel: "📱 मोबाईल नंबर + OTP",
+    passwordMethodLabel: "🔑 ईमेल / पासवर्ड",
+    registeredMobile: "नोंदणीकृत मोबाईल नंबर",
+    resend: "पुन्हा पाठवा",
+    enter6DigitOtp: "६-अंकी OTP प्रविष्ट करा",
+    verifyingMerchantOtp: "व्यापारी OTP तपासत आहे...",
+    verifyOtpSignIn: "OTP तपासा आणि साइन इन करा",
+    shopEmailOrMobile: "दुकान ईमेल किंवा मोबाईल नंबर",
+    authenticatingMerchant: "व्यापारी प्रमाणित करत आहे...",
+    signInWithPassword: "पासवर्डने साइन इन करा",
+    customerAppLink: "ग्राहक ॲप →",
+    adminPortalLink: "ॲडमिन पोर्टल →",
+    enterMobileError: "कृपया मोबाईल नंबर प्रविष्ट करा",
+    enterOtpError: "कृपया ६-अंकी OTP कोड प्रविष्ट करा",
+
+    // ---- Admin login ----
+    adminManagementPortal: "ॲडमिन व्यवस्थापन पोर्टल",
+    authorizedAdminOnly: "केवळ अधिकृत प्रशासक साइन-इन",
+    adminEmail: "ॲडमिन ईमेल",
+    authenticatingAdmin: "ॲडमिन प्रमाणित करत आहे...",
+    signInToAdminDashboard: "ॲडमिन डॅशबोर्डमध्ये साइन इन करा",
+    switchToCustomerLogin: "← ग्राहक ॲप लॉगिनवर जा",
+
+    // ---- Customer layout / nav ----
+    physicalShopDiscounts: "दुकान सवलती",
+    navHome: "होम",
+    navOffers: "ऑफर्स",
+    navWallet: "वॉलेट",
+    navHistory: "इतिहास",
+    navProfile: "प्रोफाइल",
+    ptsSuffix: "पॉईंट्स",
+
+    // ---- Shop layout / nav ----
+    physicalVerifier: "फिजिकल व्हेरिफायर",
+    shopMerchantFallback: "दुकान व्यापारी",
+    shopStoreFallback: "दुकान स्टोअर",
+    navScanQr: "QR स्कॅन",
+    navBill: "बिल",
+    navProducts: "उत्पादने",
+    signOutMerchant: "व्यापारी खात्यातून साइन आउट",
+
+    // ---- Admin layout / nav ----
+    superAdmin: "सुपर ॲडमिन",
+    platformControlPanel: "प्लॅटफॉर्म कंट्रोल पॅनेल",
+    navDashboardOverview: "डॅशबोर्ड आढावा",
+    navMerchantVerification: "व्यापारी पडताळणी रांग",
+    navCustomersManagement: "ग्राहक व्यवस्थापन",
+    navShopsMerchants: "दुकाने आणि व्यापारी",
+    navDiscountOffers: "सवलत ऑफर्स",
+    navAuditTransactions: "ऑडिट व्यवहार",
+    navPlatformSettings: "प्लॅटफॉर्म सेटिंग्ज",
+    signOutAdmin: "ॲडमिन साइन आउट",
+
+    // ---- Customer home: location & nearby ----
+    locActive: "डिव्हाइस स्थान सक्रिय",
+    locObtaining: "डिव्हाइस स्थान मिळवत आहे...",
+    locDenied: "स्थान परवानगी नाकारली",
+    locSetup: "सध्याचे स्थान सेटअप",
+    locGrantedSub: "तुमच्या डिव्हाइस स्थानाचा वापर करून जवळील दुकाने क्रमवारी लावली जातात.",
+    locPromptSub: "तुमच्या नेमक्या स्थानाजवळील दुकाने शोधण्यासाठी स्थान प्रवेशास परवानगी द्या.",
+    locRefresh: "स्थान रिफ्रेश करा",
+    locEnable: "स्थान सक्षम करा",
+    locLocating: "शोधत आहे...",
+    locDeniedMsg: "स्थान परवानगी नाकारली गेली. जवळील दुकाने फॉलबॅक स्थानावरून मोजली जातात.",
+    locUnavailableMsg: "सध्याचे स्थान मिळवता आले नाही.",
+    locDeniedHelp: "Android वर स्थान कायमचे नाकारले असल्यास: सेटिंग्ज > ॲप्स > {app} > परवानग्या > स्थान उघडा आणि \"ॲप वापरताना परवानगी द्या\" निवडा.",
+    viewOffers: "ऑफर पहा"
   }
 };

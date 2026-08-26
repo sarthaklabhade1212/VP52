@@ -1,8 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Gift, Store, Shield, ArrowRight, Sparkles } from 'lucide-react';
+import { useI18n } from '../i18n/I18nContext';
+import { APP_NAME } from '../config/brand';
 
 export default function LoginSelector() {
+  const { t } = useI18n();
   return (
     <div style={{
       minHeight: '100vh',
@@ -33,13 +36,13 @@ export default function LoginSelector() {
             boxShadow: '0 10px 30px rgba(79, 70, 229, 0.5)',
             marginBottom: '16px'
           }}>
-            R
+            {APP_NAME.charAt(0)}
           </div>
           <h1 style={{ fontSize: '32px', color: '#ffffff', marginBottom: '8px' }}>
-            Rewardify Portal Selection
+            {APP_NAME} {t('portalSelection')}
           </h1>
           <p style={{ fontSize: '15px', color: '#94a3b8', maxWidth: '500px', margin: '0 auto' }}>
-            Select your account portal below to log in to the Customer Rewards & Physical Shop Discount Platform.
+            {t('portalSelectionSubtitle')}
           </p>
         </div>
 
@@ -68,15 +71,15 @@ export default function LoginSelector() {
               }}>
                 <Gift size={26} />
               </div>
-              <span className="badge badge-active" style={{ marginBottom: '8px' }}>Customer Role</span>
-              <h3 style={{ fontSize: '20px', color: '#0f172a', marginBottom: '6px' }}>Customer App</h3>
+              <span className="badge badge-active" style={{ marginBottom: '8px' }}>{t('customerRoleBadge')}</span>
+              <h3 style={{ fontSize: '20px', color: '#0f172a', marginBottom: '6px' }}>{t('customerAppTitle')}</h3>
               <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
-                Watch simulated advertisements, earn reward points, browse physical store offers, and generate redemption QR codes.
+                {t('customerAppDesc')}
               </p>
             </div>
 
             <Link to="/customer/login" className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '14px', textDecoration: 'none' }}>
-              Customer Sign In <ArrowRight size={16} />
+              {t('customerSignIn')} <ArrowRight size={16} />
             </Link>
           </div>
 
@@ -98,15 +101,15 @@ export default function LoginSelector() {
               }}>
                 <Store size={26} />
               </div>
-              <span className="badge badge-active" style={{ background: '#dcfce7', color: '#15803d', marginBottom: '8px' }}>NEW: Shop / Merchant</span>
-              <h3 style={{ fontSize: '20px', color: '#0f172a', marginBottom: '6px' }}>Shop / Merchant Portal</h3>
+              <span className="badge badge-active" style={{ background: '#dcfce7', color: '#15803d', marginBottom: '8px' }}>{t('shopMerchantBadge')}</span>
+              <h3 style={{ fontSize: '20px', color: '#0f172a', marginBottom: '6px' }}>{t('shopPortalTitle')}</h3>
               <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
-                For physical shop owners. Scan customer QR codes, verify discount eligibility with Wrong Shop protection, and approve redemptions.
+                {t('shopPortalDesc')}
               </p>
             </div>
 
             <Link to="/shop/login" className="btn-success" style={{ width: '100%', padding: '14px', fontSize: '14px', textDecoration: 'none', justifyContent: 'center' }}>
-              Shop Merchant Sign In <ArrowRight size={16} />
+              {t('shopMerchantSignIn')} <ArrowRight size={16} />
             </Link>
           </div>
 
@@ -127,15 +130,15 @@ export default function LoginSelector() {
               }}>
                 <Shield size={26} />
               </div>
-              <span className="badge" style={{ background: '#f3e8ff', color: '#6b21a8', marginBottom: '8px' }}>Administrator</span>
-              <h3 style={{ fontSize: '20px', color: '#0f172a', marginBottom: '6px' }}>Admin Dashboard</h3>
+              <span className="badge" style={{ background: '#f3e8ff', color: '#6b21a8', marginBottom: '8px' }}>{t('adminRole')}</span>
+              <h3 style={{ fontSize: '20px', color: '#0f172a', marginBottom: '6px' }}>{t('adminDashboardTitle')}</h3>
               <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px', lineHeight: 1.5 }}>
-                Super administrator panel to manage customers, partner shops, discount offers, platform reward rules, and analytics.
+                {t('adminDashboardDesc')}
               </p>
             </div>
 
             <Link to="/admin/login" className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '14px', textDecoration: 'none', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
-              Admin Sign In <ArrowRight size={16} />
+              {t('adminSignIn')} <ArrowRight size={16} />
             </Link>
           </div>
         </div>

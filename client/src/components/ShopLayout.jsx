@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../i18n/I18nContext';
+import LanguageSwitcher from './LanguageSwitcher';
 import {
   Store,
   QrCode,
@@ -18,6 +20,7 @@ import {
 
 export default function ShopLayout() {
   const { user, logout } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -56,20 +59,23 @@ export default function ShopLayout() {
           </div>
           <div>
             <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', margin: 0, lineHeight: 1.1 }}>
-              {user ? user.shop_name || user.full_name : 'Shop Merchant'}
+              {user ? user.shop_name || user.full_name : t('shopMerchantFallback')}
             </h3>
             <span style={{ fontSize: '10px', color: '#a7f3d0', fontWeight: 600 }}>
-              {user ? user.shop_code || 'SHOP-001' : 'SHOP-001'} • Physical Verifier
+              {user ? user.shop_code || 'SHOP-001' : 'SHOP-001'} • {t('physicalVerifier')}
             </span>
           </div>
         </div>
 
-        <button
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          style={{ background: 'none', border: 'none', color: '#ffffff', padding: '6px', cursor: 'pointer' }}
-        >
-          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <LanguageSwitcher tone="dark" compact />
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            style={{ background: 'none', border: 'none', color: '#ffffff', padding: '6px', cursor: 'pointer' }}
+          >
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </header>
 
       {/* Slide-out Mobile Drawer Menu */}
@@ -82,7 +88,7 @@ export default function ShopLayout() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Store size={24} color="#10b981" />
               <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0 }}>{user ? user.shop_name : 'Shop Store'}</h3>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0 }}>{user ? user.shop_name : t('shopStoreFallback')}</h3>
                 <span style={{ fontSize: '11px', color: '#a7f3d0' }}>{user ? user.email : ''}</span>
               </div>
             </div>
@@ -99,7 +105,7 @@ export default function ShopLayout() {
                 fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
               }}
             >
-              <RefreshCw size={18} /> Switch to Customer Mode 👤
+              <RefreshCw size={18} /> {t('switchToCustomer')}
             </button>
 
             <button
@@ -109,7 +115,7 @@ export default function ShopLayout() {
                 fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: 'auto'
               }}
             >
-              <LogOut size={18} /> Sign Out Merchant Account
+              <LogOut size={18} /> {t('signOutMerchant')}
             </button>
           </div>
         </div>
@@ -137,27 +143,27 @@ export default function ShopLayout() {
       }}>
         <NavLink to="/shop/dashboard" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>
           <QrCode size={20} />
-          <span>Scan QR</span>
+          <span>{t('navScanQr')}</span>
         </NavLink>
 
         <NavLink to="/shop/billing" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>
           <Receipt size={20} />
-          <span>Bill</span>
+          <span>{t('navBill')}</span>
         </NavLink>
 
         <NavLink to="/shop/products" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>
           <ShoppingBag size={20} />
-          <span>Products</span>
+          <span>{t('navProducts')}</span>
         </NavLink>
 
         <NavLink to="/shop/offers" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>
           <Tag size={20} />
-          <span>Offers</span>
+          <span>{t('navOffers')}</span>
         </NavLink>
 
         <NavLink to="/shop/history" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>
           <History size={20} />
-          <span>History</span>
+          <span>{t('navHistory')}</span>
         </NavLink>
       </nav>
 

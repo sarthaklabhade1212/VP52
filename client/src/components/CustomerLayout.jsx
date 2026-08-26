@@ -2,9 +2,13 @@ import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Home, Gift, Wallet, History, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../i18n/I18nContext';
+import LanguageSwitcher from './LanguageSwitcher';
+import { APP_NAME } from '../config/brand';
 
 export default function CustomerLayout() {
   const { user } = useAuth();
+  const { t } = useI18n();
 
   return (
     <div className="app-container">
@@ -34,27 +38,30 @@ export default function CustomerLayout() {
             fontSize: '18px',
             boxShadow: '0 4px 10px rgba(79, 70, 229, 0.3)'
           }}>
-            R
+            {APP_NAME.charAt(0)}
           </div>
           <div>
-            <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>Rewardify</h3>
-            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>Physical Shop Discounts</span>
+            <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{APP_NAME}</h3>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>{t('physicalShopDiscounts')}</span>
           </div>
         </div>
 
-        <div style={{
-          background: '#f0fdf4',
-          border: '1px solid #bbf7d0',
-          padding: '6px 12px',
-          borderRadius: '99px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px'
-        }}>
-          <span style={{ fontSize: '14px' }}>🪙</span>
-          <span style={{ fontSize: '13px', fontWeight: 800, color: '#15803d' }}>
-            {user ? (user.balance || 0).toLocaleString() : 0} Pts
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <LanguageSwitcher tone="light" compact />
+          <div style={{
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            padding: '6px 12px',
+            borderRadius: '99px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            <span style={{ fontSize: '14px' }}>🪙</span>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: '#15803d' }}>
+              {user ? (user.balance || 0).toLocaleString() : 0} {t('ptsSuffix')}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -67,27 +74,27 @@ export default function CustomerLayout() {
       <nav className="bottom-nav">
         <NavLink to="/customer/home" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Home size={22} />
-          <span>Home</span>
+          <span>{t('navHome')}</span>
         </NavLink>
 
         <NavLink to="/customer/rewards" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Gift size={22} />
-          <span>Offers</span>
+          <span>{t('navOffers')}</span>
         </NavLink>
 
         <NavLink to="/customer/wallet" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <Wallet size={22} />
-          <span>Wallet</span>
+          <span>{t('navWallet')}</span>
         </NavLink>
 
         <NavLink to="/customer/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <History size={22} />
-          <span>History</span>
+          <span>{t('navHistory')}</span>
         </NavLink>
 
         <NavLink to="/customer/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <User size={22} />
-          <span>Profile</span>
+          <span>{t('navProfile')}</span>
         </NavLink>
       </nav>
     </div>

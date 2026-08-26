@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Customer Rewards</string>
-    <string name="title_activity_main">Customer Rewards</string>
+    <string name="app_name">VIP\'S</string>
+    <string name="title_activity_main">VIP\'S</string>
     <string name="package_name">com.sarthak.customerrewards</string>
     <string name="custom_url_scheme">com.sarthak.customerrewards</string>
 </resources>

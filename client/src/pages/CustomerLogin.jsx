@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../i18n/I18nContext';
+import { APP_NAME } from '../config/brand';
 import { Gift, Lock, Mail, User, Phone, ArrowRight, Shield } from 'lucide-react';
 
 export default function CustomerLogin() {
   const navigate = useNavigate();
   const { loginCustomer, registerCustomer } = useAuth();
+  const { t } = useI18n();
 
   const [isRegister, setIsRegister] = useState(false);
   const [formData, setFormData] = useState({
@@ -64,9 +67,9 @@ export default function CustomerLogin() {
         }}>
           <Gift size={34} />
         </div>
-        <h1 style={{ fontSize: '28px', color: '#0f172a', marginBottom: '6px' }}>Rewardify</h1>
+        <h1 style={{ fontSize: '28px', color: '#0f172a', marginBottom: '6px' }}>{APP_NAME}</h1>
         <p style={{ fontSize: '14px', color: '#64748b' }}>
-          Watch Ads • Earn Points • Unlock Shop Discounts
+          {t('customerLoginTagline')}
         </p>
       </div>
 
@@ -79,7 +82,7 @@ export default function CustomerLogin() {
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {isRegister && (
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Full Name</label>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('fullName')}</label>
             <div style={{ position: 'relative' }}>
               <User size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
               <input
@@ -96,7 +99,7 @@ export default function CustomerLogin() {
         )}
 
         <div>
-          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Email Address</label>
+          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('emailAddress')}</label>
           <div style={{ position: 'relative' }}>
             <Mail size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
             <input
@@ -113,7 +116,7 @@ export default function CustomerLogin() {
 
         {isRegister && (
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Mobile Number</label>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('mobileNumber')}</label>
             <div style={{ position: 'relative' }}>
               <Phone size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
               <input
@@ -129,7 +132,7 @@ export default function CustomerLogin() {
         )}
 
         <div>
-          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Password</label>
+          <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('password')}</label>
           <div style={{ position: 'relative' }}>
             <Lock size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
             <input
@@ -150,7 +153,7 @@ export default function CustomerLogin() {
           className="btn-primary"
           style={{ width: '100%', padding: '16px', fontSize: '16px', marginTop: '8px' }}
         >
-          {loading ? 'Please wait...' : (isRegister ? 'Create Account & Start Earning' : 'Sign In to Account')}
+          {loading ? t('pleaseWait') : (isRegister ? t('createAndStartEarning') : t('signInToAccount'))}
           <ArrowRight size={18} />
         </button>
       </form>
@@ -161,14 +164,14 @@ export default function CustomerLogin() {
           onClick={() => { setIsRegister(!isRegister); setError(null); }}
           style={{ background: 'none', border: 'none', color: '#4f46e5', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}
         >
-          {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Create Account"}
+          {isRegister ? t('toggleToSignIn') : t('toggleToRegister')}
         </button>
       </div>
 
       {/* Switch to Admin Login Link */}
       <div style={{ marginTop: '36px', paddingTop: '20px', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
         <Link to="/admin/login" style={{ color: '#64748b', fontSize: '13px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-          <Shield size={16} color="#475569" /> Switch to Admin Portal Login →
+          <Shield size={16} color="#475569" /> {t('switchToAdminPortal')}
         </Link>
       </div>
     </div>

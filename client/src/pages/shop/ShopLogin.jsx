@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
+import { APP_NAME } from '../../config/brand';
 import { Store, Lock, Mail, Phone, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export default function ShopLogin() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [loginMethod, setLoginMethod] = useState('otp'); // 'otp' | 'password'
 
   // Password Login State
@@ -47,7 +50,7 @@ export default function ShopLogin() {
   };
 
   const handleSendOtp = async () => {
-    if (!mobile) return setError('Please enter mobile number');
+    if (!mobile) return setError(t('enterMobileError'));
     setError(null);
     try {
       const res = await fetch('/api/auth/send-otp', {
@@ -67,7 +70,7 @@ export default function ShopLogin() {
 
   const handleOtpLogin = async (e) => {
     e.preventDefault();
-    if (!otpCode) return setError('Please enter 6-digit OTP code');
+    if (!otpCode) return setError(t('enterOtpError'));
 
     setError(null);
     setLoading(true);
@@ -132,9 +135,10 @@ export default function ShopLogin() {
           }}>
             <Store size={30} />
           </div>
-          <h2 style={{ fontSize: '24px', color: '#0f172a', marginBottom: '4px' }}>Merchant Store Login</h2>
+          <div style={{ fontSize: '13px', fontWeight: 800, color: '#059669', letterSpacing: '0.5px', marginBottom: '2px' }}>{APP_NAME}</div>
+          <h2 style={{ fontSize: '24px', color: '#0f172a', marginBottom: '4px' }}>{t('merchantStoreLogin')}</h2>
           <p style={{ fontSize: '13px', color: '#64748b' }}>
-            Verify customer reward QR codes & approve physical store discounts
+            {t('merchantLoginSubtitle')}
           </p>
         </div>
 
@@ -150,7 +154,7 @@ export default function ShopLogin() {
               fontWeight: 700, fontSize: '12px', cursor: 'pointer'
             }}
           >
-            📱 Mobile Number + OTP
+            {t('otpMethodLabel')}
           </button>
           <button
             type="button"
@@ -162,7 +166,7 @@ export default function ShopLogin() {
               fontWeight: 700, fontSize: '12px', cursor: 'pointer'
             }}
           >
-            🔑 Email / Password
+            {t('passwordMethodLabel')}
           </button>
         </div>
 
@@ -175,7 +179,7 @@ export default function ShopLogin() {
         {loginMethod === 'otp' ? (
           <form onSubmit={handleOtpLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Registered Mobile Number</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('registeredMobile')}</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ position: 'relative', flex: 1 }}>
                   <Phone size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
@@ -195,14 +199,14 @@ export default function ShopLogin() {
                   className="btn-secondary"
                   style={{ whiteSpace: 'nowrap', fontSize: '12px', padding: '0 14px' }}
                 >
-                  {otpSent ? 'Resend' : 'Send OTP'}
+                  {otpSent ? t('resend') : t('sendOtp')}
                 </button>
               </div>
             </div>
 
             {otpSent && (
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Enter 6-Digit OTP</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('enter6DigitOtp')}</label>
                 <input
                   type="text"
                   required
@@ -220,14 +224,14 @@ export default function ShopLogin() {
               className="btn-success"
               style={{ width: '100%', padding: '16px', fontSize: '15px', marginTop: '8px', justifyContent: 'center' }}
             >
-              {loading ? 'Verifying Merchant OTP...' : 'Verify OTP & Sign In'}
+              {loading ? t('verifyingMerchantOtp') : t('verifyOtpSignIn')}
               <ArrowRight size={18} />
             </button>
           </form>
         ) : (
           <form onSubmit={handlePasswordLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Shop Email or Mobile Number</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('shopEmailOrMobile')}</label>
               <div style={{ position: 'relative' }}>
                 <Mail size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
                 <input
@@ -243,7 +247,7 @@ export default function ShopLogin() {
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Password</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('password')}</label>
               <div style={{ position: 'relative' }}>
                 <Lock size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
                 <input
@@ -264,7 +268,7 @@ export default function ShopLogin() {
               className="btn-success"
               style={{ width: '100%', padding: '16px', fontSize: '15px', marginTop: '8px', justifyContent: 'center' }}
             >
-              {loading ? 'Authenticating Merchant...' : 'Sign In with Password'}
+              {loading ? t('authenticatingMerchant') : t('signInWithPassword')}
               <ArrowRight size={18} />
             </button>
           </form>
@@ -272,10 +276,10 @@ export default function ShopLogin() {
 
         <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
           <Link to="/customer/login" style={{ color: '#4f46e5', textDecoration: 'none', fontWeight: 700 }}>
-            Customer App →
+            {t('customerAppLink')}
           </Link>
           <Link to="/admin/login" style={{ color: '#64748b', textDecoration: 'none', fontWeight: 700 }}>
-            Admin Portal →
+            {t('adminPortalLink')}
           </Link>
         </div>
       </div>

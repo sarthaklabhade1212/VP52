@@ -1,11 +1,12 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n/I18nContext';
-import { Gift, Globe, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
+import LanguageSwitcher from '../components/LanguageSwitcher';
+import { Gift, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
 
 export default function WelcomeScreen() {
   const navigate = useNavigate();
-  const { lang, setLang, t } = useI18n();
+  const { t } = useI18n();
 
   return (
     <div style={{
@@ -31,29 +32,9 @@ export default function WelcomeScreen() {
           display: 'flex',
           justifyContent: 'flex-end',
           alignItems: 'center',
-          gap: '8px',
           marginBottom: '20px'
         }}>
-          <Globe size={18} color="#64748b" />
-          <select
-            value={lang}
-            onChange={(e) => setLang(e.target.value)}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '99px',
-              border: '1px solid #cbd5e1',
-              fontSize: '13px',
-              fontWeight: 700,
-              color: '#0f172a',
-              background: '#f8fafc',
-              cursor: 'pointer',
-              outline: 'none'
-            }}
-          >
-            <option value="en">English 🇬🇧</option>
-            <option value="hi">हिंदी 🇮🇳</option>
-            <option value="mr">मराठी 🚩</option>
-          </select>
+          <LanguageSwitcher tone="light" />
         </div>
 
         {/* App Logo */}
@@ -106,7 +87,7 @@ export default function WelcomeScreen() {
 
         <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
           <ShieldCheck size={16} color="#10b981" />
-          <span>Production-Ready & Multi-Language</span>
+          <span>{t('productionReadyMultiLang')}</span>
         </div>
       </div>
     </div>

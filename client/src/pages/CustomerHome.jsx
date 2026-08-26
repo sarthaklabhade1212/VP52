@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/I18nContext';
+import { APP_NAME } from '../config/brand';
 import MerchantMap from '../components/MerchantMap';
 import SimulatedAdModal from '../components/SimulatedAdModal';
 import {
@@ -122,12 +123,12 @@ export default function CustomerHome() {
         setLocationStatus('granted');
       } else {
         setLocationStatus('denied');
-        setLocationErrorMessage('Location permission was denied. Nearby shops are calculated from fallback location.');
+        setLocationErrorMessage(t('locDeniedMsg'));
       }
     } catch (err) {
       console.warn('[CustomerHome] Location request error:', err);
       setLocationStatus('error');
-      setLocationErrorMessage(err.message || 'Unable to retrieve current location.');
+      setLocationErrorMessage(err.message || t('locUnavailableMsg'));
     }
   };
 
@@ -375,17 +376,17 @@ export default function CustomerHome() {
             <div>
               <span style={{ fontWeight: 800, color: '#0f172a', display: 'block' }}>
                 {locationStatus === 'granted'
-                  ? `Device Location Active (${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)})`
+                  ? `${t('locActive')} (${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)})`
                   : locationStatus === 'requesting'
-                  ? 'Obtaining Device Location...'
+                  ? t('locObtaining')
                   : locationStatus === 'denied'
-                  ? 'Location Permission Denied'
-                  : 'Current Location Setup'}
+                  ? t('locDenied')
+                  : t('locSetup')}
               </span>
               <span style={{ fontSize: '11px', color: '#64748b' }}>
                 {locationStatus === 'granted'
-                  ? 'Nearby shops are dynamically sorted using your device location.'
-                  : locationErrorMessage || 'Allow location access to discover shops near your exact position.'}
+                  ? t('locGrantedSub')
+                  : locationErrorMessage || t('locPromptSub')}
               </span>
             </div>
           </div>
@@ -410,13 +411,13 @@ export default function CustomerHome() {
             }}
           >
             <RefreshCw size={14} style={{ animation: locationStatus === 'requesting' ? 'spin 1s linear infinite' : 'none' }} />
-            {locationStatus === 'granted' ? 'Refresh Location' : locationStatus === 'requesting' ? 'Locating...' : 'Enable Location'}
+            {locationStatus === 'granted' ? t('locRefresh') : locationStatus === 'requesting' ? t('locLocating') : t('locEnable')}
           </button>
         </div>
 
         {locationStatus === 'denied' && (
           <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #fecdd3', fontSize: '11px', color: '#9f1239' }}>
-            ℹ️ If location was permanently denied in Android: Open <strong>Android Settings</strong> &gt; <strong>Apps</strong> &gt; <strong>Rewardify</strong> &gt; <strong>Permissions</strong> &gt; <strong>Location</strong> and select <em>"Allow while using the app"</em>.
+            ℹ️ {t('locDeniedHelp').replace('{app}', APP_NAME)}
           </div>
         )}
       </div>
@@ -509,7 +510,7 @@ export default function CustomerHome() {
                 <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '8px' }}>📍 {shop.address} ({shop.distance_km} km)</span>
 
                 <button onClick={() => navigate('/customer/rewards')} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px' }}>
-                  View Offers <ChevronRight size={14} />
+                  {t('viewOffers')} <ChevronRight size={14} />
                 </button>
               </div>
             </div>

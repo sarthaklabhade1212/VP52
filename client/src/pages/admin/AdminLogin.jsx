@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
+import { APP_NAME } from '../../config/brand';
 import { Shield, Lock, Mail, ArrowRight, UserCheck } from 'lucide-react';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
   const { loginAdmin } = useAuth();
+  const { t } = useI18n();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -64,9 +67,10 @@ export default function AdminLogin() {
           }}>
             <Shield size={30} />
           </div>
-          <h2 style={{ fontSize: '24px', color: '#0f172a', marginBottom: '4px' }}>Admin Management Portal</h2>
+          <div style={{ fontSize: '13px', fontWeight: 800, color: '#7c3aed', letterSpacing: '0.5px', marginBottom: '2px' }}>{APP_NAME}</div>
+          <h2 style={{ fontSize: '24px', color: '#0f172a', marginBottom: '4px' }}>{t('adminManagementPortal')}</h2>
           <p style={{ fontSize: '13px', color: '#64748b' }}>
-            Authorized Administrator Sign-in Only
+            {t('authorizedAdminOnly')}
           </p>
         </div>
 
@@ -78,7 +82,7 @@ export default function AdminLogin() {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Admin Email</label>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('adminEmail')}</label>
             <div style={{ position: 'relative' }}>
               <Mail size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
               <input
@@ -94,7 +98,7 @@ export default function AdminLogin() {
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Password</label>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('password')}</label>
             <div style={{ position: 'relative' }}>
               <Lock size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
               <input
@@ -115,14 +119,14 @@ export default function AdminLogin() {
             className="btn-primary"
             style={{ width: '100%', padding: '16px', fontSize: '15px', marginTop: '8px', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}
           >
-            {loading ? 'Authenticating Admin...' : 'Sign In to Admin Dashboard'}
+            {loading ? t('authenticatingAdmin') : t('signInToAdminDashboard')}
             <ArrowRight size={18} />
           </button>
         </form>
 
         <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
           <Link to="/customer/login" style={{ color: '#4f46e5', fontSize: '13px', textDecoration: 'none', fontWeight: 700 }}>
-            ← Switch to Customer App Login
+            {t('switchToCustomerLogin')}
           </Link>
         </div>
       </div>

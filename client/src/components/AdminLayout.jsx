@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../i18n/I18nContext';
+import LanguageSwitcher from './LanguageSwitcher';
 import {
   Shield,
   LayoutDashboard,
@@ -19,6 +21,7 @@ import {
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -51,17 +54,20 @@ export default function AdminLayout() {
             <Shield size={20} />
           </div>
           <div>
-            <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', margin: 0, lineHeight: 1.1 }}>Super Admin</h3>
-            <span style={{ fontSize: '10px', color: '#c7d2fe', fontWeight: 600 }}>Platform Control Panel</span>
+            <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', margin: 0, lineHeight: 1.1 }}>{t('superAdmin')}</h3>
+            <span style={{ fontSize: '10px', color: '#c7d2fe', fontWeight: 600 }}>{t('platformControlPanel')}</span>
           </div>
         </div>
 
-        <button
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          style={{ background: 'none', border: 'none', color: '#ffffff', padding: '6px', cursor: 'pointer' }}
-        >
-          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <LanguageSwitcher tone="dark" compact />
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            style={{ background: 'none', border: 'none', color: '#ffffff', padding: '6px', cursor: 'pointer' }}
+          >
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </header>
 
       {/* Slide-out Mobile Menu Drawer */}
@@ -74,7 +80,7 @@ export default function AdminLayout() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Shield size={24} color="#7c3aed" />
               <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: 'white' }}>Administrator</h3>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: 'white' }}>{t('adminRole')}</h3>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>{user ? user.email : 'admin@example.com'}</span>
               </div>
             </div>
@@ -85,31 +91,31 @@ export default function AdminLayout() {
 
           <div style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto' }}>
             <NavLink to="/admin/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="admin-nav-item">
-              <LayoutDashboard size={18} /> Dashboard Overview
+              <LayoutDashboard size={18} /> {t('navDashboardOverview')}
             </NavLink>
 
             <NavLink to="/admin/merchant-verification" onClick={() => setIsMobileMenuOpen(false)} className="admin-nav-item">
-              <ShieldCheck size={18} /> Merchant Verification Queue
+              <ShieldCheck size={18} /> {t('navMerchantVerification')}
             </NavLink>
 
             <NavLink to="/admin/customers" onClick={() => setIsMobileMenuOpen(false)} className="admin-nav-item">
-              <Users size={18} /> Customers Management
+              <Users size={18} /> {t('navCustomersManagement')}
             </NavLink>
 
             <NavLink to="/admin/shops" onClick={() => setIsMobileMenuOpen(false)} className="admin-nav-item">
-              <Store size={18} /> Shops & Merchants
+              <Store size={18} /> {t('navShopsMerchants')}
             </NavLink>
 
             <NavLink to="/admin/offers" onClick={() => setIsMobileMenuOpen(false)} className="admin-nav-item">
-              <Tag size={18} /> Discount Offers
+              <Tag size={18} /> {t('navDiscountOffers')}
             </NavLink>
 
             <NavLink to="/admin/transactions" onClick={() => setIsMobileMenuOpen(false)} className="admin-nav-item">
-              <Receipt size={18} /> Audit Transactions
+              <Receipt size={18} /> {t('navAuditTransactions')}
             </NavLink>
 
             <NavLink to="/admin/settings" onClick={() => setIsMobileMenuOpen(false)} className="admin-nav-item">
-              <Settings size={18} /> Platform Settings
+              <Settings size={18} /> {t('navPlatformSettings')}
             </NavLink>
 
             <button
@@ -119,7 +125,7 @@ export default function AdminLayout() {
                 fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: 'auto'
               }}
             >
-              <LogOut size={18} /> Sign Out Admin
+              <LogOut size={18} /> {t('signOutAdmin')}
             </button>
           </div>
         </div>

@@ -1,0 +1,59 @@
+# ---- Dependencies -----------------------------------------------------------
+node_modules/
+**/node_modules/
+
+# ---- Build output -----------------------------------------------------------
+dist/
+client/dist/
+build/
+*.tsbuildinfo
+
+# ---- Secrets & local env ----------------------------------------------------
+# Ignore real env files (they may contain secrets or machine/deploy-specific values).
+.env
+.env.local
+.env.*.local
+.env.production
+server/.env
+client/.env
+client/.env.production
+# ...but KEEP shared, secret-free templates and the tracked dev config:
+!.env.example
+!**/.env.example
+!client/.env.production.example
+!client/.env.development
+
+# ---- Databases --------------------------------------------------------------
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ---- Logs -------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- Android build outputs --------------------------------------------------
+client/android/.gradle/
+client/android/build/
+client/android/app/build/
+client/android/captures/
+client/android/local.properties
+*.keystore
+*.jks
+
+# ---- iOS build outputs ------------------------------------------------------
+client/ios/App/build/
+client/ios/App/Pods/
+client/ios/DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# ---- Editor / OS ------------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp

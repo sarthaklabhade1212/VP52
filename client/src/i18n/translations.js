@@ -80,7 +80,18 @@ export const translations = {
     signInToAccount: "Sign In to Account",
     toggleToSignIn: "Already have an account? Sign In",
     toggleToRegister: "Don't have an account? Create Account",
-    switchToAdminPortal: "Switch to Admin Portal Login →",
+    loginAsMerchant: "Login as Merchant",
+
+    // ---- Customer Google sign-in ----
+    continueWithGoogle: "Continue with Google",
+    orDivider: "OR",
+    googleSigningIn: "Signing in with Google...",
+    googleAuthFailed: "Google sign-in failed. Please try again.",
+    googleCancelled: "Google sign-in was cancelled.",
+    googleAccountCreation: "Setting up your account...",
+    googleNetworkError: "Network error during Google sign-in. Check your connection.",
+    googleUnavailable: "Google sign-in is only available in the mobile app.",
+    googleNotConfigured: "Google sign-in is not configured yet.",
 
     // ---- Shop / merchant login ----
     merchantStoreLogin: "Merchant Store Login",
@@ -95,8 +106,8 @@ export const translations = {
     shopEmailOrMobile: "Shop Email or Mobile Number",
     authenticatingMerchant: "Authenticating Merchant...",
     signInWithPassword: "Sign In with Password",
-    customerAppLink: "Customer App →",
-    adminPortalLink: "Admin Portal →",
+    customerAppLink: "Login as Customer →",
+    adminPortalLink: "Login as Admin →",
     enterMobileError: "Please enter mobile number",
     enterOtpError: "Please enter 6-digit OTP code",
 
@@ -234,7 +245,18 @@ export const translations = {
     signInToAccount: "खाते में साइन इन करें",
     toggleToSignIn: "पहले से खाता है? साइन इन करें",
     toggleToRegister: "खाता नहीं है? नया खाता बनाएं",
-    switchToAdminPortal: "एडमिन पोर्टल लॉगिन पर जाएं →",
+    loginAsMerchant: "मर्चेंट के रूप में लॉगिन करें",
+
+    // ---- Customer Google sign-in ----
+    continueWithGoogle: "Google से जारी रखें",
+    orDivider: "या",
+    googleSigningIn: "Google से साइन इन हो रहा है...",
+    googleAuthFailed: "Google साइन-इन विफल रहा। कृपया पुनः प्रयास करें।",
+    googleCancelled: "Google साइन-इन रद्द कर दिया गया।",
+    googleAccountCreation: "आपका खाता सेट किया जा रहा है...",
+    googleNetworkError: "Google साइन-इन के दौरान नेटवर्क त्रुटि। कृपया अपना कनेक्शन जांचें।",
+    googleUnavailable: "Google साइन-इन केवल मोबाइल ऐप में उपलब्ध है।",
+    googleNotConfigured: "Google साइन-इन अभी कॉन्फ़िगर नहीं किया गया है।",
 
     // ---- Shop / merchant login ----
     merchantStoreLogin: "मर्चेंट स्टोर लॉगिन",
@@ -249,8 +271,8 @@ export const translations = {
     shopEmailOrMobile: "दुकान ईमेल या मोबाइल नंबर",
     authenticatingMerchant: "मर्चेंट प्रमाणित हो रहा है...",
     signInWithPassword: "पासवर्ड से साइन इन करें",
-    customerAppLink: "ग्राहक ऐप →",
-    adminPortalLink: "एडमिन पोर्टल →",
+    customerAppLink: "ग्राहक के रूप में लॉगिन करें →",
+    adminPortalLink: "एडमिन के रूप में लॉगिन करें →",
     enterMobileError: "कृपया मोबाइल नंबर दर्ज करें",
     enterOtpError: "कृपया 6-अंकों का OTP कोड दर्ज करें",
 
@@ -388,7 +410,18 @@ export const translations = {
     signInToAccount: "खात्यात साइन इन करा",
     toggleToSignIn: "आधीच खाते आहे? साइन इन करा",
     toggleToRegister: "खाते नाही? नवीन खाते तयार करा",
-    switchToAdminPortal: "ॲडमिन पोर्टल लॉगिनवर जा →",
+    loginAsMerchant: "व्यापारी म्हणून लॉगिन करा",
+
+    // ---- Customer Google sign-in ----
+    continueWithGoogle: "Google सह सुरू ठेवा",
+    orDivider: "किंवा",
+    googleSigningIn: "Google ने साइन इन होत आहे...",
+    googleAuthFailed: "Google साइन-इन अयशस्वी. कृपया पुन्हा प्रयत्न करा.",
+    googleCancelled: "Google साइन-इन रद्द केले.",
+    googleAccountCreation: "तुमचे खाते सेट करत आहे...",
+    googleNetworkError: "Google साइन-इन दरम्यान नेटवर्क त्रुटी. कृपया तुमचे कनेक्शन तपासा.",
+    googleUnavailable: "Google साइन-इन फक्त मोबाइल ॲपमध्ये उपलब्ध आहे.",
+    googleNotConfigured: "Google साइन-इन अद्याप कॉन्फिगर केलेले नाही.",
 
     // ---- Shop / merchant login ----
     merchantStoreLogin: "व्यापारी स्टोअर लॉगिन",
@@ -403,8 +436,8 @@ export const translations = {
     shopEmailOrMobile: "दुकान ईमेल किंवा मोबाईल नंबर",
     authenticatingMerchant: "व्यापारी प्रमाणित करत आहे...",
     signInWithPassword: "पासवर्डने साइन इन करा",
-    customerAppLink: "ग्राहक ॲप →",
-    adminPortalLink: "ॲडमिन पोर्टल →",
+    customerAppLink: "ग्राहक म्हणून लॉगिन करा →",
+    adminPortalLink: "ॲडमिन म्हणून लॉगिन करा →",
     enterMobileError: "कृपया मोबाईल नंबर प्रविष्ट करा",
     enterOtpError: "कृपया ६-अंकी OTP कोड प्रविष्ट करा",
 

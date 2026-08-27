@@ -85,6 +85,22 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  // Customer Google sign-in: the caller passes a Google ID token obtained via the
+  // native plugin. The backend verifies it and returns the SAME token/user shape
+  // as email/password login, so session handling is identical (role stays customer).
+  const loginCustomerGoogle = async (idToken) => {
+    const data = await safeFetchJson('/api/auth/customer/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken })
+    });
+    setToken(data.token);
+    setUser(data.user);
+    localStorage.setItem('rewards_token', data.token);
+    localStorage.setItem('rewards_user', JSON.stringify(data.user));
+    return data.user;
+  };
+
   const loginAdmin = async (email, password) => {
     const data = await safeFetchJson('/api/auth/admin/login', {
       method: 'POST',
@@ -120,6 +136,7 @@ export function AuthProvider({ children }) {
       loading,
       loginCustomer,
       registerCustomer,
+      loginCustomerGoogle,
       loginAdmin,
       logout,
       updateUserBalance,

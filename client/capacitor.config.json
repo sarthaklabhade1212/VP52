@@ -1,5 +1,9 @@
 {
   "appId": "com.sarthak.customerrewards",
   "appName": "VIP'S",
-  "webDir": "dist"
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
 }

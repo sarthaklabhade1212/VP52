@@ -263,6 +263,12 @@ function initDatabase() {
     if (!userColumns.includes('profile_photo')) db.exec("ALTER TABLE users ADD COLUMN profile_photo TEXT;");
     if (!userColumns.includes('qr_token')) db.exec("ALTER TABLE users ADD COLUMN qr_token TEXT;");
     if (!userColumns.includes('qr_token_created_at')) db.exec("ALTER TABLE users ADD COLUMN qr_token_created_at DATETIME;");
+    // Google Sign-In (customer only): additive columns + a partial unique index so a
+    // Google identity maps to at most one customer. Existing rows keep google_subject_id
+    // NULL and auth_provider defaulting to 'local'; no data is rewritten or removed.
+    if (!userColumns.includes('google_subject_id')) db.exec("ALTER TABLE users ADD COLUMN google_subject_id TEXT;");
+    if (!userColumns.includes('auth_provider')) db.exec("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local';");
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_subject_id ON users(google_subject_id) WHERE google_subject_id IS NOT NULL;");
 
     const levelColumns = db.prepare("PRAGMA table_info(reward_levels)").all().map(c => c.name);
     if (!levelColumns.includes('discount_cap_percent')) db.exec("ALTER TABLE reward_levels ADD COLUMN discount_cap_percent INTEGER DEFAULT 10;");

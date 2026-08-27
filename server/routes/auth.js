@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
@@ -111,6 +112,143 @@ router.post('/customer/login', (req, res) => {
   } catch (error) {
     console.error('Customer login error:', error);
     return res.status(500).json({ success: false, error: 'Internal server error during login' });
+  }
+});
+
+// ============================================================
+// Customer Google Sign-In (native ID-token flow)
+// ------------------------------------------------------------
+// The client obtains a Google ID token via @capgo/capacitor-social-login
+// (native Credential Manager on Android). We verify that token SERVER-SIDE with
+// google-auth-library against GOOGLE_WEB_CLIENT_ID, then issue the SAME customer
+// JWT used by email/password login. The email / sub / name are NEVER trusted
+// from the client -- only what Google's verified token asserts.
+// ============================================================
+router.post('/customer/google', async (req, res) => {
+  try {
+    const idToken = req.body.idToken || req.body.id_token || req.body.credential;
+    if (!idToken) {
+      return res.status(400).json({ success: false, error: 'Google ID token is required' });
+    }
+
+    // Lazy-load the verifier so the server still boots before `npm install`
+    // adds google-auth-library. Returns a clear, actionable error until then.
+    let OAuth2Client;
+    try {
+      ({ OAuth2Client } = require('google-auth-library'));
+    } catch (e) {
+      return res.status(503).json({ success: false, error: 'Google sign-in is not available on the server yet (run "npm install" in /server).' });
+    }
+
+    const CLIENT_ID = process.env.GOOGLE_WEB_CLIENT_ID;
+    if (!CLIENT_ID) {
+      return res.status(503).json({ success: false, error: 'Google sign-in is not configured on the server (GOOGLE_WEB_CLIENT_ID missing).' });
+    }
+
+    // 1) Verify signature, issuer, audience and expiry via Google's public keys.
+    let payload;
+    try {
+      const client = new OAuth2Client(CLIENT_ID);
+      const ticket = await client.verifyIdToken({ idToken, audience: CLIENT_ID });
+      payload = ticket.getPayload();
+    } catch (e) {
+      return res.status(401).json({ success: false, error: 'Invalid or unverifiable Google credential' });
+    }
+
+    if (!payload || !payload.sub) {
+      return res.status(401).json({ success: false, error: 'Invalid Google credential' });
+    }
+
+    const googleSub = String(payload.sub);
+    const email = (payload.email || '').trim().toLowerCase();
+    const emailVerified = payload.email_verified === true || payload.email_verified === 'true';
+    const displayName = (payload.name || (email ? email.split('@')[0] : 'Customer')).trim();
+
+    // 2) Resolve the customer account (link existing / create new) safely.
+    let user = db.prepare('SELECT * FROM users WHERE google_subject_id = ?').get(googleSub);
+
+    if (!user) {
+      if (!email) {
+        return res.status(400).json({ success: false, error: 'Google account did not provide an email address' });
+      }
+
+      const existingCustomer = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
+      if (existingCustomer) {
+        // Same email is already a customer account.
+        if (existingCustomer.google_subject_id && existingCustomer.google_subject_id !== googleSub) {
+          return res.status(409).json({ success: false, error: 'This account is already linked to a different Google identity.' });
+        }
+        if (!emailVerified) {
+          return res.status(403).json({ success: false, error: 'Google has not verified this email, so it cannot be linked to your existing account.' });
+        }
+        if (existingCustomer.status !== 'active') {
+          return res.status(403).json({ success: false, error: 'Account is suspended. Please contact administrator.' });
+        }
+        // Safe account-linking: attach the verified Google identity to the customer.
+        db.prepare('UPDATE users SET google_subject_id = ? WHERE id = ?').run(googleSub, existingCustomer.id);
+        user = db.prepare('SELECT * FROM users WHERE id = ?').get(existingCustomer.id);
+      } else {
+        // No customer with this email. NEVER convert an admin or merchant account.
+        const adminConflict = db.prepare('SELECT id FROM admins WHERE LOWER(email) = ?').get(email);
+        const shopConflict = db.prepare('SELECT id FROM shops WHERE LOWER(email) = ?').get(email);
+        if (adminConflict || shopConflict) {
+          return res.status(409).json({ success: false, error: 'This email is registered to a merchant or admin account and cannot be used for customer Google sign-in.' });
+        }
+        if (!emailVerified) {
+          return res.status(403).json({ success: false, error: 'Google has not verified this email address.' });
+        }
+        // Create a Google-provisioned customer. A random unusable password hash
+        // satisfies the existing NOT NULL column without enabling password login.
+        const randomSecret = crypto.randomBytes(32).toString('hex');
+        const passwordHash = bcrypt.hashSync(randomSecret, 10);
+        let userId;
+        try {
+          const result = db.prepare(`
+            INSERT INTO users (full_name, email, phone, password_hash, status, google_subject_id, auth_provider)
+            VALUES (?, ?, ?, ?, 'active', ?, 'google')
+          `).run(displayName, email, null, passwordHash, googleSub);
+          userId = result.lastInsertRowid;
+        } catch (e) {
+          // Unique-index race (duplicate google_subject_id / email) -> reject safely.
+          return res.status(409).json({ success: false, error: 'Google account could not be registered (already in use).' });
+        }
+        db.prepare('INSERT INTO wallets (user_id, balance, total_earned, total_redeemed) VALUES (?, 0, 0, 0)').run(userId);
+        user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      }
+    } else {
+      // Found directly by Google identity -> standard sign-in.
+      if (user.status !== 'active') {
+        return res.status(403).json({ success: false, error: 'Account is suspended. Please contact administrator.' });
+      }
+    }
+
+    // 3) Issue the SAME customer JWT + user shape as email/password login.
+    const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: 'customer' },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Google login successful',
+      token,
+      user: {
+        id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+        phone: user.phone,
+        role: 'customer',
+        balance: wallet ? wallet.balance : 0,
+        total_earned: wallet ? wallet.total_earned : 0,
+        total_redeemed: wallet ? wallet.total_redeemed : 0
+      }
+    });
+  } catch (error) {
+    console.error('Google customer login error:', error);
+    return res.status(500).json({ success: false, error: 'Internal server error during Google sign-in' });
   }
 });
 

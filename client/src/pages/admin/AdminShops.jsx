@@ -1,16 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Store, Plus, Edit2, Trash2, MapPin, Phone, CheckCircle2, X, Key, ShieldAlert, Copy, RefreshCw, UserCheck } from 'lucide-react';
+import { useI18n } from '../../i18n/I18nContext';
+import MerchantMap from '../../components/MerchantMap';
+import { getCurrentLocation } from '../../utils/location';
+import { Store, Plus, Edit2, Trash2, MapPin, Phone, CheckCircle2, X, Key, ShieldAlert, Copy, RefreshCw, UserCheck, LocateFixed, Map as MapIcon, AlertTriangle } from 'lucide-react';
+
+// Client-side coordinate guard. Mirrors the server's validateCoordinates:
+// null/undefined/'' are rejected BEFORE Number() coercion (Number(null) === 0
+// would otherwise smuggle a missing coordinate through as a valid 0).
+function validCoord(lat, lng) {
+  if (lat === null || lat === undefined || lat === '' || lng === null || lng === undefined || lng === '') return false;
+  const la = Number(lat);
+  const ln = Number(lng);
+  return Number.isFinite(la) && la >= -90 && la <= 90 && Number.isFinite(ln) && ln >= -180 && ln <= 180;
+}
 
 export default function AdminShops() {
   const { token } = useAuth();
+  const { t } = useI18n();
   const [shops, setShops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingShop, setEditingShop] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Credential Confirmation Modal State
   const [createdCredentials, setCreatedCredentials] = useState(null);
+
+  // ── Shop-location picker state (shared by Add + Edit) ───────────────────────
+  // formData.latitude/longitude hold the CONFIRMED coordinates that get sent.
+  // candidate* hold a pending pick that the admin has not yet confirmed.
+  const [locConfirmed, setLocConfirmed] = useState(false);
+  const [candidateLat, setCandidateLat] = useState(null);
+  const [candidateLng, setCandidateLng] = useState(null);
+  const [showMap, setShowMap] = useState(false);
+  const [locBusy, setLocBusy] = useState(false);
+  const [locErr, setLocErr] = useState(null);
+  // Map view center. Changing it bumps mapEpoch so MerchantMap remounts and
+  // recenters (the component inits its Leaflet view only once). A pin drop does
+  // NOT touch this — the map stays put while the admin fine-tunes the pin.
+  const [mapCenter, setMapCenter] = useState({ lat: 18.5204, lng: 73.8567 });
+  const [mapEpoch, setMapEpoch] = useState(0);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -22,7 +52,8 @@ export default function AdminShops() {
     email: '',
     image_url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80',
     status: 'active',
-    temp_password: ''
+    latitude: null,
+    longitude: null
   });
 
   const fetchShops = () => {
@@ -34,6 +65,29 @@ export default function AdminShops() {
   };
 
   useEffect(() => { fetchShops(); }, [token]);
+
+  // Reset the location picker to a clean state, optionally seeding it from an
+  // existing shop's coordinates (used when opening the Edit modal).
+  const resetLocationPicker = (seedLat = null, seedLng = null) => {
+    const hasSeed = validCoord(seedLat, seedLng);
+    setLocErr(null);
+    setLocBusy(false);
+    setShowMap(false);
+    if (hasSeed) {
+      const la = Number(seedLat);
+      const ln = Number(seedLng);
+      setCandidateLat(la);
+      setCandidateLng(ln);
+      setLocConfirmed(true);
+      setMapCenter({ lat: la, lng: ln });
+    } else {
+      setCandidateLat(null);
+      setCandidateLng(null);
+      setLocConfirmed(false);
+      setMapCenter({ lat: 18.5204, lng: 73.8567 });
+    }
+    setMapEpoch(e => e + 1);
+  };
 
   const handleOpenAdd = () => {
     setEditingShop(null);
@@ -47,13 +101,18 @@ export default function AdminShops() {
       email: '',
       image_url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80',
       status: 'active',
-      temp_password: `Shop@${Math.floor(100 + Math.random() * 900)}`
+      latitude: null,
+      longitude: null
     });
+    resetLocationPicker();
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (shop) => {
     setEditingShop(shop);
+    const seedLat = shop.latitude;
+    const seedLng = shop.longitude;
+    const hasSeed = validCoord(seedLat, seedLng);
     setFormData({
       name: shop.name || '',
       owner_name: shop.owner_name || '',
@@ -64,9 +123,60 @@ export default function AdminShops() {
       email: shop.email || '',
       image_url: shop.image_url || '',
       status: shop.status || 'active',
-      temp_password: ''
+      latitude: hasSeed ? Number(seedLat) : null,
+      longitude: hasSeed ? Number(seedLng) : null
     });
+    resetLocationPicker(seedLat, seedLng);
     setIsModalOpen(true);
+  };
+
+  // [Use Current Location] — reuses utils/location.getCurrentLocation (Capacitor
+  // geolocation with web fallback). Result becomes a candidate the admin must
+  // still confirm, and recenters the map so they can verify/fine-tune the pin.
+  const handleUseCurrentLocation = async () => {
+    setLocErr(null);
+    setLocBusy(true);
+    try {
+      const { lat, lng } = await getCurrentLocation();
+      if (!validCoord(lat, lng)) throw new Error('invalid');
+      setCandidateLat(lat);
+      setCandidateLng(lng);
+      setLocConfirmed(false);
+      setMapCenter({ lat, lng });
+      setMapEpoch(e => e + 1);
+      setShowMap(true);
+    } catch (err) {
+      setLocErr(t('locationErrorAdmin'));
+    } finally {
+      setLocBusy(false);
+    }
+  };
+
+  // [Pick on Map] — reveals the reused MerchantMap in pin-drop mode.
+  const handlePickOnMap = () => {
+    setLocErr(null);
+    setShowMap(true);
+  };
+
+  // Pin drop / drag from MerchantMap. Updates the candidate only (no confirm).
+  const handlePinDropped = (lat, lng) => {
+    setCandidateLat(lat);
+    setCandidateLng(lng);
+    setLocConfirmed(false);
+  };
+
+  // [Confirm This Location] — promotes the candidate into the confirmed formData
+  // coordinates. Only reachable when the candidate is a valid coordinate.
+  const handleConfirmLocation = () => {
+    if (!validCoord(candidateLat, candidateLng)) return;
+    setFormData(fd => ({ ...fd, latitude: Number(candidateLat), longitude: Number(candidateLng) }));
+    setLocConfirmed(true);
+  };
+
+  // [Change Location] — reopens the picker so the admin can re-pick before saving.
+  const handleChangeLocation = () => {
+    setLocConfirmed(false);
+    setShowMap(true);
   };
 
   const handleStatusChange = async (shopId, newStatus) => {
@@ -127,9 +237,20 @@ export default function AdminShops() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Location is REQUIRED and must be explicitly confirmed for both create and
+    // edit — the server rejects missing/invalid coordinates, and we mirror that
+    // here so "Create Merchant" is never a dead click.
+    if (!locConfirmed || !validCoord(formData.latitude, formData.longitude)) {
+      setLocErr(t('shopLocationRequiredHint'));
+      setShowMap(true);
+      return;
+    }
+
     const url = editingShop ? `/api/admin/shops/${editingShop.id}` : '/api/admin/shops';
     const method = editingShop ? 'PUT' : 'POST';
 
+    setSubmitting(true);
     try {
       const res = await fetch(url, {
         method,
@@ -137,7 +258,11 @@ export default function AdminShops() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          latitude: Number(formData.latitude),
+          longitude: Number(formData.longitude)
+        })
       });
       const data = await res.json();
 
@@ -148,11 +273,18 @@ export default function AdminShops() {
         if (!editingShop && data.credentials) {
           setCreatedCredentials(data.credentials);
         }
+      } else {
+        setLocErr(data.error || 'Could not save the shop. Please try again.');
       }
     } catch (err) {
       console.error(err);
+      setLocErr('Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const canSave = locConfirmed && validCoord(formData.latitude, formData.longitude) && !submitting;
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
@@ -169,7 +301,9 @@ export default function AdminShops() {
 
       {/* Shops Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(310px, 1fr))', gap: '20px' }}>
-        {shops.map((shop) => (
+        {shops.map((shop) => {
+          const shopHasLocation = validCoord(shop.latitude, shop.longitude);
+          return (
           <div key={shop.id} style={{ background: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
             <div style={{ height: '120px', position: 'relative' }}>
               <img src={shop.image_url} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -191,11 +325,25 @@ export default function AdminShops() {
                 Owner: {shop.owner_name || 'Store Merchant'}
               </span>
 
-              <div style={{ fontSize: '12px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px', background: '#f8fafc', padding: '10px', borderRadius: '10px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px', background: '#f8fafc', padding: '10px', borderRadius: '10px', marginBottom: '10px' }}>
                 <div>📱 <strong>Login Mobile:</strong> {shop.phone || 'N/A'}</div>
                 <div>📧 <strong>Email:</strong> {shop.email || 'N/A'}</div>
                 <div>📍 <strong>Address:</strong> {shop.address}</div>
               </div>
+
+              {/* Location verification state — a shop only surfaces in customer
+                  "nearby" results when it has valid coordinates. */}
+              {shopHasLocation ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '8px 10px', borderRadius: '10px', marginBottom: '16px', fontSize: '11.5px', fontWeight: 700 }}>
+                  <CheckCircle2 size={14} />
+                  <span>{t('locVerifiedCard')} · {Number(shop.latitude).toFixed(5)}, {Number(shop.longitude).toFixed(5)}</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', padding: '8px 10px', borderRadius: '10px', marginBottom: '16px', fontSize: '11.5px', fontWeight: 700 }}>
+                  <AlertTriangle size={14} />
+                  <span>{t('locMissingCard')}</span>
+                </div>
+              )}
 
               {/* Status Action Buttons */}
               <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
@@ -230,7 +378,8 @@ export default function AdminShops() {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* CONFIRMATION MODAL: SHOWS CREATED MERCHANT CREDENTIALS ONCE */}
@@ -258,6 +407,13 @@ export default function AdminShops() {
                 <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>EMAIL ADDRESS</span>
                 <strong style={{ color: '#0f172a' }}>✉️ {createdCredentials.email}</strong>
               </div>
+
+              {validCoord(createdCredentials.latitude, createdCredentials.longitude) && (
+                <div>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>CONFIRMED SHOP LOCATION</span>
+                  <strong style={{ color: '#0f172a' }}>📍 {Number(createdCredentials.latitude).toFixed(6)}, {Number(createdCredentials.longitude).toFixed(6)}</strong>
+                </div>
+              )}
 
               <div>
                 <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>TEMPORARY PASSWORD (SHOWN ONCE)</span>
@@ -342,14 +498,102 @@ export default function AdminShops() {
                 </select>
               </div>
 
-              {!editingShop && (
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Temporary Password (Optional / Auto-Generated)</label>
-                  <input type="text" className="form-input" value={formData.temp_password} onChange={e => setFormData({ ...formData, temp_password: e.target.value })} placeholder="Shop@123" />
-                </div>
-              )}
+              {/* ── REQUIRED Shop Location picker (Phase 2 / 2B) ─────────────── */}
+              <div style={{ border: '1.5px solid #e2e8f0', borderRadius: '16px', padding: '14px', background: '#fafafa' }}>
+                <label style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MapPin size={16} color="#4f46e5" /> {t('shopLocationLabel')} *
+                </label>
 
-              <button type="submit" className="btn-primary" style={{ padding: '14px', fontSize: '15px', marginTop: '10px' }}>
+                {/* Confirmed state */}
+                {locConfirmed && validCoord(formData.latitude, formData.longitude) ? (
+                  <div style={{ marginTop: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '12px', borderRadius: '12px', fontWeight: 800, fontSize: '13px' }}>
+                      <CheckCircle2 size={18} /> ✓ {t('locationConfirmedLabel')}
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '8px', fontSize: '13px', color: '#334155' }}>
+                      <div style={{ flex: 1, background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px 10px' }}>
+                        <span style={{ fontSize: '10px', color: '#64748b', display: 'block', fontWeight: 700 }}>{t('latitudeLabel')}</span>
+                        <strong>{Number(formData.latitude).toFixed(6)}</strong>
+                      </div>
+                      <div style={{ flex: 1, background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px 10px' }}>
+                        <span style={{ fontSize: '10px', color: '#64748b', display: 'block', fontWeight: 700 }}>{t('longitudeLabel')}</span>
+                        <strong>{Number(formData.longitude).toFixed(6)}</strong>
+                      </div>
+                    </div>
+                    <button type="button" onClick={handleChangeLocation} className="btn-secondary" style={{ width: '100%', marginTop: '10px', padding: '10px', fontSize: '13px', justifyContent: 'center' }}>
+                      <RefreshCw size={14} /> {t('changeLocationBtn')}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: '10px' }}>
+                    <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0' }}>{t('shopLocationRequiredHint')}</p>
+
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button type="button" onClick={handleUseCurrentLocation} disabled={locBusy} className="btn-secondary" style={{ flex: 1, minWidth: '150px', padding: '10px', fontSize: '13px', justifyContent: 'center' }}>
+                        <LocateFixed size={15} /> {locBusy ? t('gettingLocationAdmin') : t('useCurrentLocationBtn')}
+                      </button>
+                      <button type="button" onClick={handlePickOnMap} className="btn-secondary" style={{ flex: 1, minWidth: '150px', padding: '10px', fontSize: '13px', justifyContent: 'center' }}>
+                        <MapIcon size={15} /> {t('pickOnMapBtn')}
+                      </button>
+                    </div>
+
+                    {locErr && (
+                      <div style={{ marginTop: '10px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '10px', borderRadius: '10px', fontSize: '12px', fontWeight: 700 }}>
+                        {locErr}
+                      </div>
+                    )}
+
+                    {showMap && (
+                      <div style={{ marginTop: '12px' }}>
+                        <p style={{ fontSize: '11.5px', color: '#64748b', margin: '0 0 8px 0' }}>{t('tapMapToDrop')}</p>
+                        <div style={{ height: '300px', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                          <MerchantMap
+                            key={`admin-picker-${mapEpoch}`}
+                            userLat={mapCenter.lat}
+                            userLng={mapCenter.lng}
+                            isPinDropMode={true}
+                            onPinDropped={handlePinDropped}
+                          />
+                        </div>
+
+                        <div style={{ marginTop: '10px', fontSize: '12.5px', color: '#334155' }}>
+                          {validCoord(candidateLat, candidateLng) ? (
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                              <div style={{ flex: 1, background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '10px', padding: '8px 10px' }}>
+                                <span style={{ fontSize: '10px', color: '#4f46e5', display: 'block', fontWeight: 700 }}>{t('latitudeLabel')}</span>
+                                <strong>{Number(candidateLat).toFixed(6)}</strong>
+                              </div>
+                              <div style={{ flex: 1, background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '10px', padding: '8px 10px' }}>
+                                <span style={{ fontSize: '10px', color: '#4f46e5', display: 'block', fontWeight: 700 }}>{t('longitudeLabel')}</span>
+                                <strong>{Number(candidateLng).toFixed(6)}</strong>
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>{t('noLocationYet')}</span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleConfirmLocation}
+                          disabled={!validCoord(candidateLat, candidateLng)}
+                          className="btn-primary"
+                          style={{ width: '100%', marginTop: '10px', padding: '12px', fontSize: '14px', justifyContent: 'center', opacity: validCoord(candidateLat, candidateLng) ? 1 : 0.5, cursor: validCoord(candidateLat, candidateLng) ? 'pointer' : 'not-allowed' }}
+                        >
+                          <CheckCircle2 size={16} /> {t('confirmLocationBtn')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={!canSave}
+                className="btn-primary"
+                style={{ padding: '14px', fontSize: '15px', marginTop: '10px', opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}
+              >
                 {editingShop ? 'Save Changes' : 'Create Merchant Account & Generate Credentials'}
               </button>
             </form>

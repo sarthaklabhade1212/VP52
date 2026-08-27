@@ -61,7 +61,7 @@ function buildCapacitorConfig(mode) {
   const isProduction = mode === 'production';
   return {
     appId: 'com.sarthak.customerrewards',
-    appName: "VIP'S",
+    appName: "VP52",
     webDir: 'dist',
     server: {
       androidScheme: isProduction ? 'https' : 'http',

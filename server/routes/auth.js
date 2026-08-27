@@ -3,7 +3,8 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
-const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
+const { authenticateToken, requireRole, JWT_SECRET } = require('../middleware/auth');
+const { validatePasswordStrength } = require('../utils/password');
 
 const router = express.Router();
 
@@ -353,7 +354,8 @@ router.post('/shop/login', (req, res) => {
         phone: shop.phone,
         address: shop.address,
         category: shop.category,
-        role: 'shop'
+        role: 'shop',
+        must_change_password: shop.must_change_password ? 1 : 0
       }
     });
   } catch (error) {
@@ -414,7 +416,8 @@ router.post('/shop/login-mobile', (req, res) => {
         phone: shop.phone,
         address: shop.address,
         category: shop.category,
-        role: 'shop'
+        role: 'shop',
+        must_change_password: shop.must_change_password ? 1 : 0
       }
     });
   } catch (error) {
@@ -457,52 +460,16 @@ router.post('/verify-otp', (req, res) => {
   }
 });
 
-// Merchant Registration (State: Pending Admin Approval)
+// Merchant self-registration is PERMANENTLY DISABLED.
+// Merchant / Shop accounts are created exclusively by VP52 administrators
+// (see POST /api/admin/shops). This endpoint is retained only to return an
+// explicit, machine-readable 410 Gone so any stale client learns the path is
+// gone. It performs NO database read or write of any kind.
 router.post('/merchant/register', (req, res) => {
-  try {
-    const { owner_name, shop_name, mobile, email, category, address, latitude, longitude, password } = req.body;
-
-    if (!owner_name || !shop_name || !email || !password || !address) {
-      return res.status(400).json({ success: false, error: 'Owner name, shop name, email, address, and password are required' });
-    }
-
-    const existingShop = db.prepare('SELECT id FROM shops WHERE email = ?').get(email.trim().toLowerCase());
-    if (existingShop) {
-      return res.status(400).json({ success: false, error: 'Shop email is already registered' });
-    }
-
-    const passwordHash = bcrypt.hashSync(password, 10);
-    const countRow = db.prepare('SELECT COUNT(*) AS count FROM shops').get();
-    const nextId = (countRow ? countRow.count : 0) + 1;
-    const shopCode = `SHOP-00${nextId}`;
-
-    const result = db.prepare(`
-      INSERT INTO shops (shop_code, email, password_hash, name, category, description, address, phone, image_url, status, verification_status, owner_name, latitude, longitude)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', 'pending', ?, ?, ?)
-    `).run(
-      shopCode,
-      email.trim().toLowerCase(),
-      passwordHash,
-      shop_name.trim(),
-      category ? category.trim() : 'Retail',
-      `Merchant registered by ${owner_name}`,
-      address.trim(),
-      mobile ? mobile.trim() : '',
-      'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80',
-      owner_name.trim(),
-      latitude ? parseFloat(latitude) : 18.5204,
-      longitude ? parseFloat(longitude) : 73.8567
-    );
-
-    return res.status(201).json({
-      success: true,
-      message: 'Merchant application submitted! Account verification pending administrator approval.',
-      shopCode
-    });
-  } catch (error) {
-    console.error('Merchant registration error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to submit merchant registration' });
-  }
+  return res.status(410).json({
+    success: false,
+    error: 'Merchant accounts are created by VP52 administrators.'
+  });
 });
 router.get('/me', authenticateToken, (req, res) => {
   try {
@@ -551,12 +518,73 @@ router.get('/me', authenticateToken, (req, res) => {
           phone: shop.phone,
           address: shop.address,
           category: shop.category,
-          role: 'shop'
+          role: 'shop',
+          must_change_password: shop.must_change_password ? 1 : 0
         }
       });
     }
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to fetch user profile' });
+  }
+});
+
+// ============================================================
+// Merchant password change (forced first-login change + voluntary change)
+// ------------------------------------------------------------
+// Authenticated merchants ONLY. The shop identity is taken exclusively from the
+// verified JWT (req.user.shop_id) -- never from the request body -- so a merchant
+// can only ever change THEIR OWN credentials. Verifies the current/temporary
+// password, enforces the shared strength policy on the new password, stores a
+// bcrypt hash, and clears shops.must_change_password. Passwords are never logged.
+// ============================================================
+router.post('/shop/change-password', authenticateToken, requireRole('shop'), (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const { current_password, new_password } = req.body || {};
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({ success: false, error: 'Current password and new password are required' });
+    }
+
+    const shop = db.prepare('SELECT * FROM shops WHERE id = ?').get(shopId);
+    if (!shop) {
+      return res.status(404).json({ success: false, error: 'Merchant account not found' });
+    }
+    if (shop.status !== 'active') {
+      return res.status(403).json({ success: false, error: 'Merchant account is inactive or suspended' });
+    }
+    if (!shop.password_hash) {
+      return res.status(400).json({ success: false, error: 'Merchant password credentials not set. Please contact administrator.' });
+    }
+
+    // Verify the current / temporary password before allowing any change.
+    const currentMatches = bcrypt.compareSync(current_password, shop.password_hash);
+    if (!currentMatches) {
+      return res.status(401).json({ success: false, error: 'Current password is incorrect' });
+    }
+
+    // Enforce the shared strength policy (>=12 chars, mixed case + digit).
+    const strength = validatePasswordStrength(new_password);
+    if (!strength.ok) {
+      return res.status(400).json({ success: false, error: strength.error });
+    }
+
+    // The new password must actually differ from the current/temporary one.
+    if (bcrypt.compareSync(new_password, shop.password_hash)) {
+      return res.status(400).json({ success: false, error: 'New password must be different from your current password' });
+    }
+
+    const newHash = bcrypt.hashSync(new_password, 10);
+    db.prepare('UPDATE shops SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(newHash, shopId);
+
+    return res.json({
+      success: true,
+      message: 'Password updated successfully',
+      must_change_password: 0
+    });
+  } catch (error) {
+    console.error('Merchant change-password error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update password' });
   }
 });
 

@@ -1,14 +1,16 @@
 import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Home, Gift, Wallet, History, User } from 'lucide-react';
+import { Home, Gift, Wallet, History, User, MessageCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/I18nContext';
+import useChatUnread from '../hooks/useChatUnread';
 import LanguageSwitcher from './LanguageSwitcher';
 import { APP_NAME } from '../config/brand';
 
 export default function CustomerLayout() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const unread = useChatUnread('customer');
 
   return (
     <div className="app-container">
@@ -90,6 +92,18 @@ export default function CustomerLayout() {
         <NavLink to="/customer/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
           <History size={22} />
           <span>{t('navHistory')}</span>
+        </NavLink>
+
+        <NavLink to="/customer/messages" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <div style={{ position: 'relative', display: 'inline-flex' }}>
+            <MessageCircle size={22} />
+            {unread > 0 && (
+              <span style={{ position: 'absolute', top: '-6px', right: '-10px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, borderRadius: '999px', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </div>
+          <span>{t('navMessages')}</span>
         </NavLink>
 
         <NavLink to="/customer/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>

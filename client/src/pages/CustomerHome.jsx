@@ -30,7 +30,8 @@ import {
   Lock,
   Navigation,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from 'lucide-react';
 
 export default function CustomerHome() {
@@ -45,7 +46,7 @@ export default function CustomerHome() {
   // Search & Filters State
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [distanceFilter, setDistanceFilter] = useState('all'); // '0.5' | '1' | '2' | '5' | '10' | 'all'
+  const [distanceFilter, setDistanceFilter] = useState('5'); // '1' | '3' | '5' | '10' | '25' | '50' | 'all' — default 5 km
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'map'
 
   // 6-Hour Reward Session State
@@ -57,19 +58,55 @@ export default function CustomerHome() {
   // Level Progression State
   const [levelInfo, setLevelInfo] = useState(null);
 
-  // GPS Location & Permission State
-  const [userLocation, setUserLocation] = useState({ lat: 18.5204, lng: 73.8567 });
-  const [locationStatus, setLocationStatus] = useState('idle'); // 'idle' | 'requesting' | 'granted' | 'denied' | 'error'
+  // GPS Location & Permission State.
+  // userLocation stays null until the customer explicitly shares it — we never
+  // seed a silent default, so distance/radius only apply once location is real.
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('idle'); // 'idle' | 'prompt' | 'requesting' | 'granted' | 'denied' | 'error'
   const [locationErrorMessage, setLocationErrorMessage] = useState('');
+  // Set when the customer taps "Not Now". We then stop showing the opt-in prompt
+  // and never auto-request again this session (only an explicit tap re-asks).
+  const [locationPromptDismissed, setLocationPromptDismissed] = useState(false);
+
+  // Map view falls back to a neutral city center purely for framing the map when
+  // no real location is shared. This is NOT sent to the server for distance math.
+  const MAP_FALLBACK = { lat: 18.5204, lng: 73.8567 };
+  const mapCenter = userLocation || MAP_FALLBACK;
+
+  // Chat: create-or-reuse a one-to-one conversation with a shop, then open it.
+  // The server derives the customer from the JWT and dedupes by (customer, shop),
+  // so tapping this repeatedly always resolves to the same conversation.
+  const [startingChatShopId, setStartingChatShopId] = useState(null);
+
+  const startChat = (shopId) => {
+    if (startingChatShopId) return;
+    setStartingChatShopId(shopId);
+    fetch('/api/customer/conversations', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shop_id: shopId })
+    })
+      .then(res => res.json())
+      .then(d => {
+        if (d.success && d.conversation) {
+          navigate(`/customer/messages/${d.conversation.id}`);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setStartingChatShopId(null));
+  };
 
   const fetchShops = () => {
-    const query = new URLSearchParams({
-      search,
-      category,
-      maxDistance: distanceFilter,
-      lat: userLocation.lat,
-      lng: userLocation.lng
-    }).toString();
+    // Only send coordinates + radius when the customer has shared real location.
+    // Without it, the server returns all valid-coordinate shops (no distance,
+    // no radius filtering) — we never fabricate a location.
+    const params = { search, category };
+    if (userLocation) {
+      params.lat = userLocation.lat;
+      params.lng = userLocation.lng;
+      params.maxDistance = distanceFilter;
+    }
+    const query = new URLSearchParams(params).toString();
 
     fetch(`/api/customer/shops?${query}`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -115,6 +152,7 @@ export default function CustomerHome() {
   const handleRequestLocation = async () => {
     setLocationStatus('requesting');
     setLocationErrorMessage('');
+    setLocationPromptDismissed(false);
     try {
       const perm = await requestLocationPermission();
       if (perm === 'granted') {
@@ -127,30 +165,66 @@ export default function CustomerHome() {
       }
     } catch (err) {
       console.warn('[CustomerHome] Location request error:', err);
+      // Permission may have been granted but the fix was unavailable/timed out.
       setLocationStatus('error');
       setLocationErrorMessage(err.message || t('locUnavailableMsg'));
     }
   };
 
+  // "Not Now" — stop prompting for the rest of the session. We do not request
+  // permission again unless the customer explicitly taps Enable Location.
+  const handleDismissLocation = () => {
+    setLocationPromptDismissed(true);
+  };
+
+  // Launch external turn-by-turn directions to the shop. Uses the universal
+  // Google Maps URL (no SDK/API key required); falls back to a plain query URL.
+  const handleGetDirections = (shop) => {
+    if (shop.latitude == null || shop.longitude == null) return;
+    const dest = `${shop.latitude},${shop.longitude}`;
+    const primary = `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+    try {
+      const win = window.open(primary, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        // Popup blocked — fall back to navigating the current tab.
+        window.location.href = primary;
+      }
+    } catch (err) {
+      window.location.href = `https://maps.google.com/?q=${dest}`;
+    }
+  };
+
   useEffect(() => {
+    let cancelled = false;
+    // On load we only CHECK the existing permission. We never auto-request —
+    // an un-granted state simply surfaces the opt-in prompt for the customer.
     const initLocation = async () => {
       try {
         const perm = await checkLocationPermission();
+        if (cancelled) return;
         if (perm === 'granted') {
-          const coords = await getCurrentLocation();
-          setUserLocation({ lat: coords.lat, lng: coords.lng });
-          setLocationStatus('granted');
+          try {
+            const coords = await getCurrentLocation();
+            if (cancelled) return;
+            setUserLocation({ lat: coords.lat, lng: coords.lng });
+            setLocationStatus('granted');
+          } catch (err) {
+            if (cancelled) return;
+            setLocationStatus('prompt'); // permission ok, but no fix yet — let them retry
+          }
+        } else if (perm === 'denied') {
+          setLocationStatus('denied');
+          setLocationErrorMessage(t('locDeniedMsg'));
         } else {
-          // On Customer home load, request location permission if needed for nearby shops
-          handleRequestLocation();
+          setLocationStatus('prompt'); // 'prompt' | 'error' → show opt-in, do NOT auto-request
         }
       } catch (err) {
-        console.warn('[CustomerHome] Init location check failed:', err);
-        handleRequestLocation();
+        if (!cancelled) setLocationStatus('prompt');
       }
     };
 
     initLocation();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -358,69 +432,94 @@ export default function CustomerHome() {
         )}
       </div>
 
-      {/* LOCATION PERMISSION & STATUS CARD */}
-      <div style={{
-        background: locationStatus === 'granted' ? '#f0fdf4' : locationStatus === 'denied' ? '#fff1f2' : locationStatus === 'error' ? '#fefce8' : '#f8fafc',
-        border: `1px solid ${locationStatus === 'granted' ? '#bbf7d0' : locationStatus === 'denied' ? '#fecdd3' : locationStatus === 'error' ? '#fef08a' : '#e2e8f0'}`,
-        borderRadius: '18px',
-        padding: '14px 18px',
-        marginBottom: '20px',
-        fontSize: '13px'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Navigation
-              size={20}
-              color={locationStatus === 'granted' ? '#16a34a' : locationStatus === 'denied' ? '#e11d48' : '#4f46e5'}
-            />
-            <div>
-              <span style={{ fontWeight: 800, color: '#0f172a', display: 'block' }}>
-                {locationStatus === 'granted'
-                  ? `${t('locActive')} (${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)})`
-                  : locationStatus === 'requesting'
-                  ? t('locObtaining')
-                  : locationStatus === 'denied'
-                  ? t('locDenied')
-                  : t('locSetup')}
-              </span>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>
-                {locationStatus === 'granted'
-                  ? t('locGrantedSub')
-                  : locationErrorMessage || t('locPromptSub')}
-              </span>
+      {/* LOCATION OPT-IN / STATUS CARD */}
+      {locationStatus === 'granted' ? (
+        // Active: show coordinates + a manual refresh (no auto re-requesting).
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '18px', padding: '14px 18px', marginBottom: '20px', fontSize: '13px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Navigation size={20} color="#16a34a" />
+              <div>
+                <span style={{ fontWeight: 800, color: '#0f172a', display: 'block' }}>
+                  {t('locActive')} ({userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)})
+                </span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{t('locGrantedSub')}</span>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={handleRequestLocation}
+              style={{ padding: '8px 14px', borderRadius: '12px', border: 'none', background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+            >
+              <RefreshCw size={14} /> {t('locRefresh')}
+            </button>
           </div>
-
+        </div>
+      ) : locationStatus === 'requesting' ? (
+        // Obtaining a fix.
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '14px 18px', marginBottom: '20px', fontSize: '13px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <RefreshCw size={18} color="#4f46e5" style={{ animation: 'spin 1s linear infinite' }} />
+            <span style={{ fontWeight: 800, color: '#0f172a' }}>{t('locObtaining')}</span>
+          </div>
+        </div>
+      ) : locationPromptDismissed ? (
+        // Customer chose "Not Now": slim, non-nagging bar with an opt-in later.
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '12px 16px', marginBottom: '20px', fontSize: '12.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+          <span style={{ color: '#64748b', fontWeight: 600 }}>{t('enableLocationForDistance')}</span>
           <button
             type="button"
             onClick={handleRequestLocation}
-            disabled={locationStatus === 'requesting'}
-            style={{
-              padding: '8px 14px',
-              borderRadius: '12px',
-              border: 'none',
-              background: locationStatus === 'granted' ? '#dcfce7' : '#4f46e5',
-              color: locationStatus === 'granted' ? '#15803d' : '#ffffff',
-              fontWeight: 800,
-              fontSize: '12px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              whiteSpace: 'nowrap'
-            }}
+            style={{ padding: '8px 14px', borderRadius: '12px', border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 800, fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
-            <RefreshCw size={14} style={{ animation: locationStatus === 'requesting' ? 'spin 1s linear infinite' : 'none' }} />
-            {locationStatus === 'granted' ? t('locRefresh') : locationStatus === 'requesting' ? t('locLocating') : t('locEnable')}
+            {t('locEnable')}
           </button>
         </div>
-
-        {locationStatus === 'denied' && (
-          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #fecdd3', fontSize: '11px', color: '#9f1239' }}>
-            ℹ️ {t('locDeniedHelp').replace('{app}', APP_NAME)}
-          </div>
-        )}
-      </div>
+      ) : (
+        // Opt-in prompt for idle / prompt / denied / error. Never auto-requests.
+        (() => {
+          const isProblem = locationStatus === 'denied' || locationStatus === 'error';
+          const bg = locationStatus === 'denied' ? '#fff1f2' : locationStatus === 'error' ? '#fefce8' : '#eef2ff';
+          const border = locationStatus === 'denied' ? '#fecdd3' : locationStatus === 'error' ? '#fef08a' : '#c7d2fe';
+          const sub = locationStatus === 'denied'
+            ? (locationErrorMessage || t('locDenied'))
+            : locationStatus === 'error'
+            ? (locationErrorMessage || t('locUnavailableMsg'))
+            : t('locEnableSub');
+          return (
+            <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: '18px', padding: '16px 18px', marginBottom: '20px', fontSize: '13px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
+                <MapPin size={22} color="#4f46e5" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <span style={{ fontWeight: 800, color: '#0f172a', display: 'block', fontSize: '15px' }}>{t('locFindNearby')}</span>
+                  <span style={{ fontSize: '12px', color: '#475569' }}>{sub}</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={handleRequestLocation}
+                  style={{ flex: 1, padding: '11px', borderRadius: '12px', border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                >
+                  <Navigation size={15} /> {isProblem ? t('locRetry') : t('locEnable')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissLocation}
+                  style={{ flex: 1, padding: '11px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', fontWeight: 800, fontSize: '13px', cursor: 'pointer' }}
+                >
+                  {t('locNotNow')}
+                </button>
+              </div>
+              {locationStatus === 'denied' && (
+                <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #fecdd3', fontSize: '11px', color: '#9f1239' }}>
+                  ℹ️ {t('locDeniedHelp').replace('{app}', APP_NAME)}
+                </div>
+              )}
+            </div>
+          );
+        })()
+      )}
 
       {/* Prominent Search Bar */}
       <div style={{ marginBottom: '20px' }}>
@@ -487,31 +586,91 @@ export default function CustomerHome() {
         </div>
       </div>
 
+      {/* Radius Filter — only meaningful once real location is shared. Changing
+          it re-runs fetchShops (distanceFilter is an effect dep), so the shop
+          list genuinely changes with the selected radius. */}
+      {locationStatus === 'granted' && (
+        <div style={{ marginBottom: '16px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '8px' }}>{t('radiusLabel')}</span>
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+            {['1', '3', '5', '10', '25', '50', 'all'].map(r => (
+              <button
+                key={r}
+                onClick={() => setDistanceFilter(r)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '99px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                  border: 'none',
+                  background: distanceFilter === r ? '#059669' : '#ffffff',
+                  color: distanceFilter === r ? '#ffffff' : '#64748b',
+                  boxShadow: distanceFilter === r ? '0 4px 12px rgba(5, 150, 105, 0.2)' : 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                {r === 'all' ? t('radiusAll') : `${r} ${t('kmUnit')}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* View Mode Component Switch */}
       {viewMode === 'map' ? (
         <MerchantMap
           shops={shops}
           merchants={shops}
-          userLat={userLocation.lat}
-          userLng={userLocation.lng}
-          userLocation={userLocation}
+          userLat={mapCenter.lat}
+          userLng={mapCenter.lng}
+          userLocation={mapCenter}
           onSelectShop={(s) => navigate('/customer/rewards')}
           onSelectMerchant={(s) => navigate('/customer/rewards')}
         />
       ) : (
         /* Shops & Offers List */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {shops.length === 0 && !loading && (
+            <div style={{ textAlign: 'center', padding: '32px 16px', color: '#64748b', background: '#ffffff', borderRadius: '20px', border: '1px dashed #cbd5e1', fontSize: '13px', fontWeight: 600 }}>
+              {t('noNearbyShops')}
+            </div>
+          )}
           {shops.map(shop => (
             <div key={shop.id} style={{ background: '#ffffff', borderRadius: '20px', padding: '16px', border: '1px solid #e2e8f0', display: 'flex', gap: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
               <img src={shop.image_url} alt={shop.name} style={{ width: '90px', height: '90px', borderRadius: '14px', objectFit: 'cover' }} />
               <div style={{ flex: 1 }}>
-                <span style={{ fontSize: '10px', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase' }}>{shop.category}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase' }}>{shop.category}</span>
+                  {shop.distance_km != null && (
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '8px', whiteSpace: 'nowrap' }}>
+                      {shop.distance_km} {t('kmAway')}
+                    </span>
+                  )}
+                </div>
                 <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: '2px 0' }}>{shop.name}</h3>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '8px' }}>📍 {shop.address} ({shop.distance_km} km)</span>
+                <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '8px' }}>📍 {shop.address}</span>
 
-                <button onClick={() => navigate('/customer/rewards')} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px' }}>
-                  {t('viewOffers')} <ChevronRight size={14} />
-                </button>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={() => navigate('/customer/rewards')} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px' }}>
+                    {t('viewOffers')} <ChevronRight size={14} />
+                  </button>
+                  <button
+                    onClick={() => startChat(shop.id)}
+                    disabled={startingChatShopId === shop.id}
+                    style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px', border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: startingChatShopId === shop.id ? 'wait' : 'pointer' }}
+                  >
+                    <MessageCircle size={14} /> {t('chatWithMerchant')}
+                  </button>
+                  {shop.latitude != null && shop.longitude != null && (
+                    <button
+                      onClick={() => handleGetDirections(shop)}
+                      style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px', border: '1px solid #a7f3d0', background: '#f0fdf4', color: '#15803d', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}
+                    >
+                      <Navigation size={14} /> {t('getDirections')}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

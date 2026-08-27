@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/I18nContext';
+import useChatUnread from '../hooks/useChatUnread';
 import LanguageSwitcher from './LanguageSwitcher';
 import {
   Store,
@@ -15,13 +16,15 @@ import {
   RefreshCw,
   Menu,
   X,
-  User
+  User,
+  MessageCircle
 } from 'lucide-react';
 
 export default function ShopLayout() {
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
+  const unread = useChatUnread('shop');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
@@ -32,6 +35,13 @@ export default function ShopLayout() {
   const handleSwitchToCustomerMode = () => {
     window.location.href = '/customer/login';
   };
+
+  // Force-change gate: a merchant with a pending admin-issued password change must
+  // complete it before reaching ANY dashboard page. The /shop/change-password route
+  // lives OUTSIDE this layout, so redirecting here can never loop.
+  if (user && user.must_change_password) {
+    return <Navigate to="/shop/change-password" replace />;
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f8fafc' }}>
@@ -159,6 +169,18 @@ export default function ShopLayout() {
         <NavLink to="/shop/offers" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>
           <Tag size={20} />
           <span>{t('navOffers')}</span>
+        </NavLink>
+
+        <NavLink to="/shop/messages" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>
+          <div style={{ position: 'relative', display: 'inline-flex' }}>
+            <MessageCircle size={20} />
+            {unread > 0 && (
+              <span style={{ position: 'absolute', top: '-6px', right: '-10px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, borderRadius: '999px', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </div>
+          <span>{t('navMessages')}</span>
         </NavLink>
 
         <NavLink to="/shop/history" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>

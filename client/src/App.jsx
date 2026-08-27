@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { I18nProvider } from './i18n/I18nContext';
 
+// One-time premium startup animation (pure visual overlay; see StartupSplash.jsx)
+import StartupSplash from './components/StartupSplash';
+
 // Welcome & Role Selection Landing Pages
 import WelcomeScreen from './pages/WelcomeScreen';
 import UserTypeSelection from './pages/UserTypeSelection';
@@ -16,16 +19,21 @@ import CustomerRewards from './pages/CustomerRewards';
 import CustomerWallet from './pages/CustomerWallet';
 import CustomerHistory from './pages/CustomerHistory';
 import CustomerProfile from './pages/CustomerProfile';
+import CustomerMessages from './pages/CustomerMessages';
+import CustomerChat from './pages/CustomerChat';
 
 // Shop Merchant Pages
 import ShopLayout from './components/ShopLayout';
 import ShopLogin from './pages/shop/ShopLogin';
 import MerchantRegister from './pages/shop/MerchantRegister';
+import ShopChangePassword from './pages/shop/ShopChangePassword';
 import ShopDashboard from './pages/shop/ShopDashboard';
 import ShopOffers from './pages/shop/ShopOffers';
 import ShopHistory from './pages/shop/ShopHistory';
 import MerchantProducts from './pages/shop/MerchantProducts';
 import MerchantBilling from './pages/shop/MerchantBilling';
+import MerchantMessages from './pages/MerchantMessages';
+import MerchantChat from './pages/MerchantChat';
 
 // Admin Pages
 import AdminLayout from './components/AdminLayout';
@@ -83,6 +91,9 @@ export default function App() {
     <I18nProvider>
       <AuthProvider>
         <BrowserRouter>
+          {/* Plays once per app launch, then unmounts. Sibling of <Routes>,
+              not a route, so it never re-appears during navigation. */}
+          <StartupSplash />
           <Routes>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/welcome" element={<WelcomeScreen />} />
@@ -104,12 +115,25 @@ export default function App() {
               <Route path="rewards" element={<CustomerRewards />} />
               <Route path="wallet" element={<CustomerWallet />} />
               <Route path="history" element={<CustomerHistory />} />
+              <Route path="messages" element={<CustomerMessages />} />
+              <Route path="messages/:conversationId" element={<CustomerChat />} />
               <Route path="profile" element={<CustomerProfile />} />
             </Route>
 
             {/* Shop Merchant Auth & Protected Routes */}
             <Route path="/shop/login" element={<ShopLogin />} />
             <Route path="/merchant/register" element={<MerchantRegister />} />
+            {/* Forced first-login password change. Guarded by role only (NOT by the
+                must_change_password gate that ShopLayout applies), and deliberately
+                OUTSIDE the /shop layout so the gate's redirect here cannot loop. */}
+            <Route
+              path="/shop/change-password"
+              element={
+                <ShopRoute>
+                  <ShopChangePassword />
+                </ShopRoute>
+              }
+            />
             <Route
               path="/shop"
               element={
@@ -123,6 +147,8 @@ export default function App() {
               <Route path="billing" element={<MerchantBilling />} />
               <Route path="products" element={<MerchantProducts />} />
               <Route path="offers" element={<ShopOffers />} />
+              <Route path="messages" element={<MerchantMessages />} />
+              <Route path="messages/:conversationId" element={<MerchantChat />} />
               <Route path="history" element={<ShopHistory />} />
             </Route>
 

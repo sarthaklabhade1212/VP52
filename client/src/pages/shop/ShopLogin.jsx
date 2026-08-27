@@ -41,7 +41,11 @@ export default function ShopLogin() {
 
       localStorage.setItem('rewards_token', data.token);
       localStorage.setItem('rewards_user', JSON.stringify(data.user));
-      window.location.href = '/shop/dashboard';
+      // Merchants created/reset by an admin must set their own password before
+      // reaching the dashboard. Both login methods honour the same gate.
+      window.location.href = (data.user && data.user.must_change_password)
+        ? '/shop/change-password'
+        : '/shop/dashboard';
     } catch (err) {
       setError(err.message);
     } finally {
@@ -89,7 +93,11 @@ export default function ShopLogin() {
 
       localStorage.setItem('rewards_token', data.token);
       localStorage.setItem('rewards_user', JSON.stringify(data.user));
-      window.location.href = '/shop/dashboard';
+      // Merchants created/reset by an admin must set their own password before
+      // reaching the dashboard. Both login methods honour the same gate.
+      window.location.href = (data.user && data.user.must_change_password)
+        ? '/shop/change-password'
+        : '/shop/dashboard';
     } catch (err) {
       setError(err.message);
     } finally {

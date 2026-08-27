@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "seed": "node db/seed.js"
+    "seed": "node db/seed.js",
+    "test:chat": "node test-chat.js",
+    "test:merchant": "node test-merchant-location.js"
   },
   "engines": {
     "node": ">=20.19.0"

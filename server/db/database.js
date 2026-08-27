@@ -244,6 +244,50 @@ function initDatabase() {
       metadata TEXT,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- ============================================================
+    -- Customer <-> Merchant Chat (added feature)
+    --
+    -- Design / portability:
+    --  * created_at / updated_at / last_message_at / read_at store ISO-8601 UTC
+    --    strings written by the application layer (see server/utils/chat.js),
+    --    NOT datetime('now'), so the schema and all queries port to PostgreSQL
+    --    without SQLite-specific date logic.
+    --  * UNIQUE(customer_id, shop_id) guarantees at most ONE conversation per
+    --    (customer, shop) pair — enforced by the DB, not by application checks.
+    --  * ON DELETE CASCADE cleans up conversations + messages if a shop or
+    --    customer is removed (covers the "deleted shop" case).
+    --  * messages.sender_user_id is intentionally NOT a foreign key: it points at
+    --    users.id when sender_role='customer' and shops.id when sender_role='shop',
+    --    so it is qualified by sender_role rather than a single FK target.
+    -- ============================================================
+    CREATE TABLE IF NOT EXISTS conversations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL,
+      shop_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_message_at TEXT,
+      UNIQUE(customer_id, shop_id),
+      FOREIGN KEY (customer_id) REFERENCES users (id) ON DELETE CASCADE,
+      FOREIGN KEY (shop_id) REFERENCES shops (id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL,
+      sender_role TEXT NOT NULL CHECK (sender_role IN ('customer', 'shop')),
+      sender_user_id INTEGER NOT NULL,
+      message_text TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      read_at TEXT,
+      FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversations_customer ON conversations (customer_id, last_message_at);
+    CREATE INDEX IF NOT EXISTS idx_conversations_shop ON conversations (shop_id, last_message_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages (conversation_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages (conversation_id, sender_role, read_at);
   `);
 
   // Migrations for safety

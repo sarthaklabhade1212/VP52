@@ -1,0 +1,159 @@
+/*
+ * VP52 startup splash — premium intro overlay shown once per app launch.
+ *
+ * Robustness notes:
+ *  - The overlay's own `vp52-splash-master` animation drives the FULL lifecycle
+ *    (fade/scale in -> hold -> fade/scale out) with `forwards`, ending at
+ *    opacity:0 + visibility:hidden + pointer-events:none. This means that even
+ *    if the JavaScript unmount timer never fires, the splash still disappears
+ *    and becomes click-through on its own — it can never permanently block the
+ *    login/welcome screen underneath.
+ *  - JavaScript additionally unmounts the node shortly after, purely for DOM
+ *    cleanup.
+ *  - `prefers-reduced-motion` collapses everything to a short, simple fade.
+ */
+
+.vp52-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000; /* above every app layer (drawers/nav/sticky headers) */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  /* Dark premium background with a soft warm-gold vignette in the centre. */
+  background:
+    radial-gradient(120% 120% at 50% 42%, #14110a 0%, #0a0a0a 45%, #000000 100%);
+  will-change: opacity, transform;
+  animation: vp52-splash-master 2400ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.vp52-splash__logo-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(52vw, 260px);
+  height: min(52vw, 260px);
+}
+
+/* Subtle gold glow behind the logo — gentle, not flashy. */
+.vp52-splash__glow {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(245, 197, 66, 0.42) 0%,
+    rgba(214, 164, 32, 0.20) 38%,
+    rgba(214, 164, 32, 0.0) 70%
+  );
+  filter: blur(14px);
+  opacity: 0;
+  animation:
+    vp52-glow-in 700ms ease-out 120ms forwards,
+    vp52-glow-pulse 2600ms ease-in-out 900ms infinite;
+}
+
+.vp52-splash__logo {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* preserve the supplied image's proportions — never stretch */
+  opacity: 0;
+  transform: scale(0.85);
+  animation: vp52-logo-in 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 60ms forwards;
+  -webkit-user-drag: none;
+}
+
+/* Text fallback used only if the logo PNG is not present at build time. */
+.vp52-splash__fallback {
+  position: relative;
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(48px, 13vw, 96px);
+  letter-spacing: 2px;
+  background: linear-gradient(180deg, #f7d774 0%, #e3ab33 48%, #b8801a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  opacity: 0;
+  transform: scale(0.85);
+  animation: vp52-logo-in 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 60ms forwards;
+}
+
+.vp52-splash__name {
+  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(22px, 6vw, 34px);
+  letter-spacing: 6px;
+  padding-left: 6px; /* optical balance for the letter-spacing */
+  background: linear-gradient(180deg, #f7d774 0%, #e3ab33 55%, #c58f1f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: vp52-name-in 520ms cubic-bezier(0.22, 0.61, 0.36, 1) 780ms forwards;
+}
+
+@keyframes vp52-logo-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes vp52-name-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes vp52-glow-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes vp52-glow-pulse {
+  0%, 100% { opacity: 0.72; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.04); }
+}
+
+/* Full lifecycle: visible + held, then fade/scale away at the end. */
+@keyframes vp52-splash-master {
+  0%   { opacity: 1; transform: scale(1); }
+  79%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.04); visibility: hidden; pointer-events: none; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Reduced motion: no scale/glow/pulse — just a brief, calm fade.      */
+/* ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .vp52-splash {
+    animation: vp52-splash-master-reduced 900ms ease forwards;
+  }
+  .vp52-splash__glow {
+    animation: none;
+    opacity: 0.55;
+  }
+  .vp52-splash__logo,
+  .vp52-splash__fallback {
+    transform: none;
+    animation: vp52-fade-in-reduced 320ms ease forwards;
+  }
+  .vp52-splash__name {
+    transform: none;
+    animation: vp52-fade-in-reduced 320ms ease 160ms forwards;
+  }
+  @keyframes vp52-splash-master-reduced {
+    0%   { opacity: 1; }
+    66%  { opacity: 1; }
+    100% { opacity: 0; visibility: hidden; pointer-events: none; }
+  }
+  @keyframes vp52-fade-in-reduced {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+}

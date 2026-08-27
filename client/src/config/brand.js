@@ -10,4 +10,4 @@
 // To rebrand the visible app, change APP_NAME here and it propagates everywhere
 // the UI reads it. Native app label lives in android strings.xml + capacitor
 // config (kept in sync separately, since those are build-time native values).
-export const APP_NAME = "VIP'S";
+export const APP_NAME = "VP52";

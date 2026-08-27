@@ -343,4 +343,171 @@ router.delete('/offers/:id', (req, res) => {
   }
 });
 
+// ============================================================
+// Merchant <-> Customer Chat
+//
+// SECURITY MODEL (read before editing):
+//  * The shop identity is ALWAYS taken from the verified JWT
+//    (req.user.shop_id || req.user.id). shop_id is NEVER read from the request —
+//    a merchant can therefore only ever touch conversations for their own shop.
+//  * Every conversation lookup is filtered by "shop_id = <jwt shop id>". A
+//    conversation belonging to another shop returns 404 (not 403) so IDs cannot
+//    be enumerated by probing.
+//  * Merchants can only REPLY to conversations; creating a conversation is a
+//    customer-only action (POST /api/customer/conversations).
+// ============================================================
+const { nowIso, validateMessageText } = require('../utils/chat');
+
+// GET /api/merchant/conversations — conversations involving this shop, newest first,
+// each with customer context, last message preview, and unread (customer->shop) count.
+router.get('/conversations', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const conversations = db.prepare(`
+      SELECT
+        c.id, c.customer_id, c.created_at, c.updated_at, c.last_message_at,
+        COALESCE(u.full_name, 'Customer') AS customer_name,
+        (SELECT m.message_text FROM messages m WHERE m.conversation_id = c.id
+           ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_text,
+        (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id
+           AND m.sender_role = 'customer' AND m.read_at IS NULL) AS unread_count
+      FROM conversations c
+      JOIN users u ON u.id = c.customer_id
+      WHERE c.shop_id = ?
+      ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC
+    `).all(shopId);
+
+    const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+    return res.json({ success: true, conversations, total_unread: totalUnread });
+  } catch (error) {
+    console.error('List merchant conversations error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load conversations' });
+  }
+});
+
+// GET /api/merchant/conversations/unread-count — lightweight total for the nav badge.
+router.get('/conversations/unread-count', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const row = db.prepare(`
+      SELECT COUNT(*) AS unread
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE c.shop_id = ? AND m.sender_role = 'customer' AND m.read_at IS NULL
+    `).get(shopId);
+    return res.json({ success: true, unread_count: row ? row.unread : 0 });
+  } catch (error) {
+    console.error('Merchant unread-count error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load unread count' });
+  }
+});
+
+// GET /api/merchant/conversations/:id/messages — chronological messages for a
+// conversation belonging to this shop. Non-owned/absent => 404.
+router.get('/conversations/:id/messages', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const conversationId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(conversationId)) {
+      return res.status(400).json({ success: false, error: 'Invalid conversation id' });
+    }
+
+    const conversation = db.prepare(`
+      SELECT c.id, c.customer_id, c.created_at, c.last_message_at,
+             COALESCE(u.full_name, 'Customer') AS customer_name
+      FROM conversations c
+      JOIN users u ON u.id = c.customer_id
+      WHERE c.id = ? AND c.shop_id = ?
+    `).get(conversationId, shopId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const messages = db.prepare(`
+      SELECT id, conversation_id, sender_role, sender_user_id, message_text, created_at, read_at
+      FROM messages
+      WHERE conversation_id = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(conversationId);
+
+    return res.json({ success: true, conversation, messages });
+  } catch (error) {
+    console.error('Get merchant messages error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load messages' });
+  }
+});
+
+// POST /api/merchant/conversations/:id/messages { message_text } — reply to a customer.
+router.post('/conversations/:id/messages', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const conversationId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(conversationId)) {
+      return res.status(400).json({ success: false, error: 'Invalid conversation id' });
+    }
+
+    const check = validateMessageText(req.body ? req.body.message_text : undefined);
+    if (!check.ok) {
+      return res.status(400).json({ success: false, error: check.error });
+    }
+
+    const conversation = db.prepare('SELECT id FROM conversations WHERE id = ? AND shop_id = ?')
+      .get(conversationId, shopId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const ts = nowIso();
+    const send = db.transaction(() => {
+      const info = db.prepare(`
+        INSERT INTO messages (conversation_id, sender_role, sender_user_id, message_text, created_at, read_at)
+        VALUES (?, 'shop', ?, ?, ?, NULL)
+      `).run(conversationId, shopId, check.text, ts);
+      db.prepare('UPDATE conversations SET last_message_at = ?, updated_at = ? WHERE id = ?')
+        .run(ts, ts, conversationId);
+      return info.lastInsertRowid;
+    });
+    const newId = send();
+
+    const message = db.prepare(`
+      SELECT id, conversation_id, sender_role, sender_user_id, message_text, created_at, read_at
+      FROM messages WHERE id = ?
+    `).get(newId);
+
+    return res.status(201).json({ success: true, message });
+  } catch (error) {
+    console.error('Send merchant message error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send message' });
+  }
+});
+
+// PATCH|PUT /api/merchant/conversations/:id/read — mark customer->shop messages read.
+function markMerchantConversationRead(req, res) {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const conversationId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(conversationId)) {
+      return res.status(400).json({ success: false, error: 'Invalid conversation id' });
+    }
+
+    const conversation = db.prepare('SELECT id FROM conversations WHERE id = ? AND shop_id = ?')
+      .get(conversationId, shopId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const info = db.prepare(`
+      UPDATE messages SET read_at = ?
+      WHERE conversation_id = ? AND sender_role = 'customer' AND read_at IS NULL
+    `).run(nowIso(), conversationId);
+
+    return res.json({ success: true, marked_read: info.changes });
+  } catch (error) {
+    console.error('Mark merchant read error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to mark as read' });
+  }
+}
+router.patch('/conversations/:id/read', markMerchantConversationRead);
+router.put('/conversations/:id/read', markMerchantConversationRead);
+
 module.exports = router;

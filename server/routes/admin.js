@@ -1,6 +1,8 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../db/database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { generateStrongPassword } = require('../utils/password');
 
 const router = express.Router();
 
@@ -18,6 +20,30 @@ function logAdminAction(adminId, action, targetEntity, metadata = {}) {
   } catch (e) {
     console.error('Audit log error:', e.message);
   }
+}
+
+// Coordinate validation for admin-authored shop locations.
+// Latitude must be a finite number in [-90, 90]; longitude in [-180, 180].
+// Returns { ok: true, latitude, longitude } with numeric values, or
+// { ok: false, error } describing the first problem. The admin is the ONLY
+// authority permitted to set a shop's coordinates, so this runs on every
+// create/edit write path.
+function validateCoordinates(latitude, longitude) {
+  if (latitude === undefined || latitude === null || latitude === '') {
+    return { ok: false, error: 'Shop latitude is required' };
+  }
+  if (longitude === undefined || longitude === null || longitude === '') {
+    return { ok: false, error: 'Shop longitude is required' };
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+    return { ok: false, error: 'Invalid latitude: must be a number between -90 and 90' };
+  }
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
+    return { ok: false, error: 'Invalid longitude: must be a number between -180 and 180' };
+  }
+  return { ok: true, latitude: lat, longitude: lng };
 }
 
 // Audit Logs Retrieval Endpoint
@@ -237,9 +263,16 @@ router.get('/shops', (req, res) => {
 // Admin Add Shop + Merchant Credentials
 router.post('/shops', (req, res) => {
   try {
-    const { name, owner_name, category, description, address, phone, email, image_url, status, latitude, longitude, temp_password } = req.body;
+    const { name, owner_name, category, description, address, phone, email, image_url, status, latitude, longitude } = req.body;
     if (!name || !owner_name || !phone || !address) {
       return res.status(400).json({ success: false, error: 'Shop name, owner name, mobile number, and address are required' });
+    }
+
+    // Shop location is REQUIRED and authoritative. The admin must confirm exact
+    // coordinates in the UI; there is NO silent Pune default any more.
+    const coords = validateCoordinates(latitude, longitude);
+    if (!coords.ok) {
+      return res.status(400).json({ success: false, error: coords.error });
     }
 
     const cleanPhone = phone.trim();
@@ -251,9 +284,10 @@ router.post('/shops', (req, res) => {
       return res.status(400).json({ success: false, error: `Email "${cleanEmail}" is already registered to another merchant.` });
     }
 
-    // Auto-generate secure temporary password if not provided (e.g. Shop@123)
-    const rawTempPassword = temp_password ? temp_password.trim() : `Shop@${Math.floor(100 + Math.random() * 900)}`;
-    const bcrypt = require('bcryptjs');
+    // The temporary password is generated SERVER-SIDE with Node crypto. The admin
+    // never chooses or supplies it; it is returned exactly once (below) and stored
+    // only as a bcrypt hash. It is never logged.
+    const rawTempPassword = generateStrongPassword(16);
     const passwordHash = bcrypt.hashSync(rawTempPassword, 10);
 
     const countRow = db.prepare('SELECT COUNT(*) AS count FROM shops').get();
@@ -264,8 +298,8 @@ router.post('/shops', (req, res) => {
     const initialVerificationStatus = initialStatus === 'active' ? 'approved' : 'pending';
 
     const result = db.prepare(`
-      INSERT INTO shops (shop_code, email, password_hash, name, category, description, address, phone, image_url, status, verification_status, owner_name, latitude, longitude)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO shops (shop_code, email, password_hash, name, category, description, address, phone, image_url, status, verification_status, owner_name, latitude, longitude, must_change_password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).run(
       shopCode,
       cleanEmail,
@@ -279,11 +313,11 @@ router.post('/shops', (req, res) => {
       initialStatus,
       initialVerificationStatus,
       owner_name.trim(),
-      latitude ? parseFloat(latitude) : 18.5204,
-      longitude ? parseFloat(longitude) : 73.8567
+      coords.latitude,
+      coords.longitude
     );
 
-    // Audit Log Entry
+    // Audit Log Entry (never records the password)
     db.prepare(`
       INSERT INTO reward_transactions (user_id, activity_type, points)
       VALUES (1, ?, 0)
@@ -300,6 +334,8 @@ router.post('/shops', (req, res) => {
         mobileNumber: cleanPhone,
         email: cleanEmail,
         accountStatus: initialStatus,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
         temporaryPassword: rawTempPassword // SHOWN ONCE TO ADMIN UPON CREATION
       }
     });
@@ -309,18 +345,39 @@ router.post('/shops', (req, res) => {
   }
 });
 
-// Update Shop Details
+// Update Shop Details (admin is the sole authority for public shop coordinates)
 router.put('/shops/:id', (req, res) => {
   try {
-    const { name, owner_name, category, description, address, phone, email, image_url, status } = req.body;
+    const { name, owner_name, category, description, address, phone, email, image_url, status, latitude, longitude } = req.body;
+
+    const existing = db.prepare('SELECT id FROM shops WHERE id = ?').get(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Shop not found' });
+    }
+
+    // Coordinates are validated and persisted here. Requiring valid coordinates on
+    // every edit means an admin edit can never blank out or corrupt a shop's public
+    // location, and is the ONLY supported way to correct it.
+    const coords = validateCoordinates(latitude, longitude);
+    if (!coords.ok) {
+      return res.status(400).json({ success: false, error: coords.error });
+    }
+
     db.prepare(`
       UPDATE shops
-      SET name = ?, owner_name = ?, category = ?, description = ?, address = ?, phone = ?, email = ?, image_url = ?, status = ?
+      SET name = ?, owner_name = ?, category = ?, description = ?, address = ?, phone = ?, email = ?, image_url = ?, status = ?, latitude = ?, longitude = ?
       WHERE id = ?
-    `).run(name, owner_name, category, description, address, phone, email, image_url, status || 'active', req.params.id);
+    `).run(name, owner_name, category, description, address, phone, email, image_url, status || 'active', coords.latitude, coords.longitude, req.params.id);
+
+    // Audit Log (records that coordinates were set, never the value silently)
+    db.prepare(`
+      INSERT INTO reward_transactions (user_id, activity_type, points)
+      VALUES (1, ?, 0)
+    `).run(`ADMIN UPDATED SHOP ID ${req.params.id} (location + details)`);
 
     return res.json({ success: true, message: 'Shop and merchant account updated successfully' });
   } catch (error) {
+    console.error('Admin update shop error:', error);
     return res.status(500).json({ success: false, error: 'Failed to update shop' });
   }
 });
@@ -356,13 +413,14 @@ router.put('/shops/:id/reset-credentials', (req, res) => {
       return res.status(404).json({ success: false, error: 'Shop not found' });
     }
 
-    const newTempPassword = `ShopTemp#${Math.floor(1000 + Math.random() * 9000)}`;
-    const bcrypt = require('bcryptjs');
+    // Server-side crypto-generated temporary password (never admin-chosen, never
+    // logged). Stored only as a bcrypt hash; forces a change on next merchant login.
+    const newTempPassword = generateStrongPassword(16);
     const passwordHash = bcrypt.hashSync(newTempPassword, 10);
 
-    db.prepare('UPDATE shops SET password_hash = ? WHERE id = ?').run(passwordHash, shop.id);
+    db.prepare('UPDATE shops SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(passwordHash, shop.id);
 
-    // Audit Log
+    // Audit Log (never records the password)
     db.prepare(`
       INSERT INTO reward_transactions (user_id, activity_type, points)
       VALUES (1, ?, 0)
@@ -375,6 +433,7 @@ router.put('/shops/:id/reset-credentials', (req, res) => {
         shopId: shop.id,
         shopCode: shop.shop_code,
         shopName: shop.name,
+        ownerName: shop.owner_name,
         mobileNumber: shop.phone,
         email: shop.email,
         newTemporaryPassword: newTempPassword // SHOWN ONCE TO ADMIN UPON RESET

@@ -9,14 +9,31 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(requireRole('customer'));
 
-// Helper to calculate distance using Haversine formula (in km)
+// Helper: is a stored coordinate pair usable? Treats NULL/undefined (missing),
+// non-numeric, and out-of-range values as invalid. Note Number(null) === 0, so the
+// null/undefined checks MUST run before any numeric coercion.
+function isValidCoord(lat, lng) {
+  if (lat === null || lat === undefined || lat === '' || lng === null || lng === undefined || lng === '') {
+    return false;
+  }
+  const la = Number(lat);
+  const lo = Number(lng);
+  if (!Number.isFinite(la) || !Number.isFinite(lo)) return false;
+  if (la < -90 || la > 90 || lo < -180 || lo > 180) return false;
+  return true;
+}
+
+// Helper to calculate great-circle distance using the Haversine formula (in km).
+// Returns null (NOT a fabricated fallback) when any coordinate is missing/invalid,
+// so callers can decide how to present "distance unknown".
 function calculateDistance(lat1, lon1, lat2, lon2) {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 1.2; // default fallback 1.2 km
+  if (!isValidCoord(lat1, lon1) || !isValidCoord(lat2, lon2)) return null;
+  const la1 = Number(lat1), lo1 = Number(lon1), la2 = Number(lat2), lo2 = Number(lon2);
   const R = 6371; // Radius of Earth in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const dLat = (la2 - la1) * Math.PI / 180;
+  const dLon = (lo2 - lo1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.cos(la1 * Math.PI / 180) * Math.cos(la2 * Math.PI / 180) *
             Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c * 10) / 10;
@@ -254,8 +271,14 @@ router.post('/qr-token', (req, res) => {
 router.get('/shops', (req, res) => {
   try {
     const { search, category, maxDistance, lat, lng } = req.query;
-    const userLat = lat ? parseFloat(lat) : 18.5204;
-    const userLng = lng ? parseFloat(lng) : 73.8567;
+
+    // Customer location is OPTIONAL and never persisted. It is used only to compute
+    // and sort by distance and to apply the radius filter. Distance is ALWAYS
+    // computed server-side from stored shop coordinates; any client-supplied
+    // distance (e.g. a spoofed distance_km query param) is ignored entirely.
+    const hasUserLocation = isValidCoord(lat, lng);
+    const userLat = hasUserLocation ? Number(lat) : null;
+    const userLng = hasUserLocation ? Number(lng) : null;
 
     // Strict Discoverability: ONLY APPROVED AND ACTIVE SHOPS
     let query = `
@@ -281,20 +304,32 @@ router.get('/shops', (req, res) => {
 
     let shops = db.prepare(query).all(...params);
 
-    // Attach calculated distance
-    shops = shops.map(s => {
-      const dist = calculateDistance(userLat, userLng, s.latitude || 18.5204, s.longitude || 73.8567);
-      return {
-        ...s,
-        distance_km: dist,
-        is_open: true
-      };
-    });
+    // Location-verification gate: a shop is shown to customers ONLY if it has valid
+    // coordinates. Legacy shops with missing/invalid coordinates stay in the DB (an
+    // admin can correct them) but never appear in customer results until fixed.
+    shops = shops.filter(s => isValidCoord(s.latitude, s.longitude));
 
-    // Apply distance filter if specified
-    if (maxDistance && maxDistance !== 'all') {
-      const maxDistKm = parseFloat(maxDistance);
-      shops = shops.filter(s => s.distance_km <= maxDistKm);
+    // Attach server-computed distance (null when the customer has not shared location).
+    shops = shops.map(s => ({
+      ...s,
+      distance_km: hasUserLocation ? calculateDistance(userLat, userLng, s.latitude, s.longitude) : null,
+      is_open: true
+    }));
+
+    if (hasUserLocation) {
+      // Radius filter (server-authoritative). 'all' or absent => no distance limit.
+      if (maxDistance && maxDistance !== 'all') {
+        const maxDistKm = parseFloat(maxDistance);
+        if (Number.isFinite(maxDistKm)) {
+          shops = shops.filter(s => s.distance_km !== null && s.distance_km <= maxDistKm);
+        }
+      }
+      // Sort nearest -> farthest (unknown distances, if any, sink to the end).
+      shops.sort((a, b) => {
+        if (a.distance_km === null) return 1;
+        if (b.distance_km === null) return -1;
+        return a.distance_km - b.distance_km;
+      });
     }
 
     const offers = db.prepare(`
@@ -691,5 +726,223 @@ router.get('/complaints', (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch complaints' });
   }
 });
+
+// ============================================================
+// Customer <-> Merchant Chat
+//
+// SECURITY MODEL (read before editing):
+//  * The customer identity is ALWAYS taken from the verified JWT (req.user.id).
+//    customer_id is NEVER read from the request body, params, or query — a
+//    customer can therefore only ever touch their own conversations.
+//  * Every conversation lookup is filtered by "customer_id = <jwt id>". A
+//    conversation that exists but belongs to someone else returns 404 (not 403)
+//    so conversation IDs cannot be enumerated by probing.
+//  * Message text is validated (trimmed, non-empty, max length) server-side.
+// ============================================================
+const { nowIso, validateMessageText } = require('../utils/chat');
+
+// GET /api/customer/conversations — list this customer's conversations, newest first,
+// each with the shop context, last message preview, and unread (shop->customer) count.
+router.get('/conversations', (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const conversations = db.prepare(`
+      SELECT
+        c.id, c.shop_id, c.created_at, c.updated_at, c.last_message_at,
+        s.name AS shop_name, s.category AS shop_category,
+        s.image_url AS shop_image_url, s.status AS shop_status,
+        (SELECT m.message_text FROM messages m WHERE m.conversation_id = c.id
+           ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_text,
+        (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id
+           AND m.sender_role = 'shop' AND m.read_at IS NULL) AS unread_count
+      FROM conversations c
+      JOIN shops s ON s.id = c.shop_id
+      WHERE c.customer_id = ?
+      ORDER BY COALESCE(c.last_message_at, c.created_at) DESC, c.id DESC
+    `).all(customerId);
+
+    const totalUnread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+    return res.json({ success: true, conversations, total_unread: totalUnread });
+  } catch (error) {
+    console.error('List customer conversations error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load conversations' });
+  }
+});
+
+// GET /api/customer/conversations/unread-count — lightweight total for the nav badge.
+// NOTE: registered before any "/conversations/:id/..." route so the literal path wins.
+router.get('/conversations/unread-count', (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const row = db.prepare(`
+      SELECT COUNT(*) AS unread
+      FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE c.customer_id = ? AND m.sender_role = 'shop' AND m.read_at IS NULL
+    `).get(customerId);
+    return res.json({ success: true, unread_count: row ? row.unread : 0 });
+  } catch (error) {
+    console.error('Customer unread-count error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load unread count' });
+  }
+});
+
+// POST /api/customer/conversations { shop_id } — create-or-reuse (idempotent).
+// UNIQUE(customer_id, shop_id) + ON CONFLICT DO NOTHING guarantees no duplicate
+// conversation per (customer, shop) pair, even under concurrent taps.
+router.post('/conversations', (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const shopId = parseInt(req.body ? req.body.shop_id : undefined, 10);
+    if (!Number.isInteger(shopId) || shopId <= 0) {
+      return res.status(400).json({ success: false, error: 'A valid shop_id is required' });
+    }
+
+    const shop = db.prepare('SELECT id, status FROM shops WHERE id = ?').get(shopId);
+    if (!shop) {
+      return res.status(404).json({ success: false, error: 'Shop not found' });
+    }
+    if (shop.status !== 'active') {
+      return res.status(403).json({ success: false, error: 'This shop is not available for messaging' });
+    }
+
+    const ts = nowIso();
+    db.prepare(`
+      INSERT INTO conversations (customer_id, shop_id, created_at, updated_at, last_message_at)
+      VALUES (?, ?, ?, ?, NULL)
+      ON CONFLICT(customer_id, shop_id) DO NOTHING
+    `).run(customerId, shopId, ts, ts);
+
+    const conversation = db.prepare(`
+      SELECT c.id, c.shop_id, c.created_at, c.updated_at, c.last_message_at,
+             s.name AS shop_name, s.category AS shop_category,
+             s.image_url AS shop_image_url, s.status AS shop_status
+      FROM conversations c
+      JOIN shops s ON s.id = c.shop_id
+      WHERE c.customer_id = ? AND c.shop_id = ?
+    `).get(customerId, shopId);
+
+    return res.json({ success: true, conversation });
+  } catch (error) {
+    console.error('Create customer conversation error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to start conversation' });
+  }
+});
+
+// GET /api/customer/conversations/:id/messages — chronological messages for a
+// conversation the caller owns. Non-owned/absent => 404.
+router.get('/conversations/:id/messages', (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const conversationId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(conversationId)) {
+      return res.status(400).json({ success: false, error: 'Invalid conversation id' });
+    }
+
+    const conversation = db.prepare(`
+      SELECT c.id, c.shop_id, c.created_at, c.last_message_at,
+             s.name AS shop_name, s.category AS shop_category,
+             s.image_url AS shop_image_url, s.status AS shop_status
+      FROM conversations c
+      JOIN shops s ON s.id = c.shop_id
+      WHERE c.id = ? AND c.customer_id = ?
+    `).get(conversationId, customerId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const messages = db.prepare(`
+      SELECT id, conversation_id, sender_role, sender_user_id, message_text, created_at, read_at
+      FROM messages
+      WHERE conversation_id = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(conversationId);
+
+    return res.json({ success: true, conversation, messages });
+  } catch (error) {
+    console.error('Get customer messages error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load messages' });
+  }
+});
+
+// POST /api/customer/conversations/:id/messages { message_text } — send a message.
+router.post('/conversations/:id/messages', (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const conversationId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(conversationId)) {
+      return res.status(400).json({ success: false, error: 'Invalid conversation id' });
+    }
+
+    const check = validateMessageText(req.body ? req.body.message_text : undefined);
+    if (!check.ok) {
+      return res.status(400).json({ success: false, error: check.error });
+    }
+
+    const conversation = db.prepare(`
+      SELECT c.id, s.status AS shop_status
+      FROM conversations c
+      JOIN shops s ON s.id = c.shop_id
+      WHERE c.id = ? AND c.customer_id = ?
+    `).get(conversationId, customerId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+    if (conversation.shop_status !== 'active') {
+      return res.status(403).json({ success: false, error: 'This shop is not available for messaging' });
+    }
+
+    const ts = nowIso();
+    const send = db.transaction(() => {
+      const info = db.prepare(`
+        INSERT INTO messages (conversation_id, sender_role, sender_user_id, message_text, created_at, read_at)
+        VALUES (?, 'customer', ?, ?, ?, NULL)
+      `).run(conversationId, customerId, check.text, ts);
+      db.prepare('UPDATE conversations SET last_message_at = ?, updated_at = ? WHERE id = ?')
+        .run(ts, ts, conversationId);
+      return info.lastInsertRowid;
+    });
+    const newId = send();
+
+    const message = db.prepare(`
+      SELECT id, conversation_id, sender_role, sender_user_id, message_text, created_at, read_at
+      FROM messages WHERE id = ?
+    `).get(newId);
+
+    return res.status(201).json({ success: true, message });
+  } catch (error) {
+    console.error('Send customer message error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send message' });
+  }
+});
+
+// PATCH|PUT /api/customer/conversations/:id/read — mark shop->customer messages read.
+function markCustomerConversationRead(req, res) {
+  try {
+    const customerId = req.user.id;
+    const conversationId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(conversationId)) {
+      return res.status(400).json({ success: false, error: 'Invalid conversation id' });
+    }
+
+    const conversation = db.prepare('SELECT id FROM conversations WHERE id = ? AND customer_id = ?')
+      .get(conversationId, customerId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, error: 'Conversation not found' });
+    }
+
+    const info = db.prepare(`
+      UPDATE messages SET read_at = ?
+      WHERE conversation_id = ? AND sender_role = 'shop' AND read_at IS NULL
+    `).run(nowIso(), conversationId);
+
+    return res.json({ success: true, marked_read: info.changes });
+  } catch (error) {
+    console.error('Mark customer read error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to mark as read' });
+  }
+}
+router.patch('/conversations/:id/read', markCustomerConversationRead);
+router.put('/conversations/:id/read', markCustomerConversationRead);
 
 module.exports = router;

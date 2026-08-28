@@ -17,8 +17,8 @@ export default function CustomerLayout() {
       {/* Top Header */}
       <header style={{
         padding: '16px 20px',
-        background: '#ffffff',
-        borderBottom: '1px solid #f1f5f9',
+        background: '#0B0B0B',
+        borderBottom: '1px solid rgba(212, 175, 55, 0.2)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -31,28 +31,28 @@ export default function CustomerLayout() {
             width: '38px',
             height: '38px',
             borderRadius: '12px',
-            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+            background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'white',
+            color: '#050505',
             fontWeight: 800,
             fontSize: '18px',
-            boxShadow: '0 4px 10px rgba(79, 70, 229, 0.3)'
+            boxShadow: '0 4px 12px rgba(212, 175, 55, 0.25)'
           }}>
             {APP_NAME.charAt(0)}
           </div>
           <div>
-            <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{APP_NAME}</h3>
-            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>{t('physicalShopDiscounts')}</span>
+            <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF', lineHeight: 1.1 }}>{APP_NAME}</h3>
+            <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 600 }}>{t('physicalShopDiscounts')}</span>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <LanguageSwitcher tone="light" compact />
+          <LanguageSwitcher tone="dark" compact />
           <div style={{
-            background: '#f0fdf4',
-            border: '1px solid #bbf7d0',
+            background: '#111111',
+            border: '1px solid rgba(212, 175, 55, 0.3)',
             padding: '6px 12px',
             borderRadius: '99px',
             display: 'flex',
@@ -60,7 +60,7 @@ export default function CustomerLayout() {
             gap: '6px'
           }}>
             <span style={{ fontSize: '14px' }}>🪙</span>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: '#15803d' }}>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: '#F2D675' }}>
               {user ? (user.balance || 0).toLocaleString() : 0} {t('ptsSuffix')}
             </span>
           </div>
@@ -68,7 +68,7 @@ export default function CustomerLayout() {
       </header>
 
       {/* Main Content Area */}
-      <main style={{ flex: 1, paddingBottom: '80px', background: '#f8fafc' }}>
+      <main style={{ flex: 1, paddingBottom: '80px', background: '#050505' }}>
         <Outlet />
       </main>
 
@@ -98,7 +98,7 @@ export default function CustomerLayout() {
           <div style={{ position: 'relative', display: 'inline-flex' }}>
             <MessageCircle size={22} />
             {unread > 0 && (
-              <span style={{ position: 'absolute', top: '-6px', right: '-10px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, borderRadius: '999px', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+              <span style={{ position: 'absolute', top: '-6px', right: '-10px', background: '#ef4444', color: '#FFFFFF', fontSize: '10px', fontWeight: 800, borderRadius: '999px', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
                 {unread > 99 ? '99+' : unread}
               </span>
             )}

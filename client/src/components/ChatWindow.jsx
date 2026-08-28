@@ -3,8 +3,8 @@ import { ArrowLeft, Send, AlertCircle, WifiOff, RefreshCw } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
 import { apiFetch } from '../utils/api';
 
-const POLL_MS = 4000;          // active conversation refresh
-const MAX_LEN = 2000;          // mirrors server-side validateMessageText
+const POLL_MS = 4000;
+const MAX_LEN = 2000;
 
 function formatTime(iso) {
   if (!iso) return '';
@@ -15,23 +15,12 @@ function formatTime(iso) {
   }
 }
 
-/**
- * Shared chat screen for both the customer and the merchant sides.
- *
- * Props:
- *  - basePath: '/api/customer' | '/api/merchant'
- *  - conversationId: string | number (from the route)
- *  - myRole: 'customer' | 'shop' (which bubbles are "mine")
- *  - accent: brand colour for own bubbles / send button
- *  - deriveHeader: (conversation) => ({ title, subtitle })
- *  - onBack: () => void
- */
-export default function ChatWindow({ basePath, conversationId, myRole, accent = '#4f46e5', deriveHeader, onBack }) {
+export default function ChatWindow({ basePath, conversationId, myRole, accent = '#D4AF37', deriveHeader, onBack }) {
   const { t } = useI18n();
 
   const [messages, setMessages] = useState([]);
   const [conversation, setConversation] = useState(null);
-  const [status, setStatus] = useState('loading'); // loading | ready | error | notfound
+  const [status, setStatus] = useState('loading');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
@@ -44,19 +33,16 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
 
   const messagesUrl = `${basePath}/conversations/${conversationId}/messages`;
 
-  // Mark counterpart messages as read (best-effort; clears the unread badge).
   const markRead = useCallback(async () => {
     try {
       await apiFetch(`${basePath}/conversations/${conversationId}/read`, { method: 'PATCH' });
-    } catch (e) {
-      // best-effort only
-    }
+    } catch (e) {}
   }, [basePath, conversationId]);
 
   const load = useCallback(async ({ initial = false } = {}) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       setOffline(true);
-      if (initial) setStatus('ready'); // show offline banner rather than a hard error
+      if (initial) setStatus('ready');
       return;
     }
     try {
@@ -79,7 +65,6 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
       setStatus('ready');
       setOffline(false);
 
-      // If any counterpart messages are unread, mark them read (once per fresh batch).
       const hasUnreadFromOther = (data.messages || []).some(
         (m) => m.sender_role !== myRole && !m.read_at
       );
@@ -95,7 +80,6 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
     }
   }, [messagesUrl, myRole, markRead]);
 
-  // Initial load + polling.
   useEffect(() => {
     setStatus('loading');
     readSentRef.current = false;
@@ -106,7 +90,6 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
     };
   }, [load]);
 
-  // Online/offline reactions.
   useEffect(() => {
     const goOnline = () => { setOffline(false); load({ initial: false }); };
     const goOffline = () => setOffline(true);
@@ -118,7 +101,6 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
     };
   }, [load]);
 
-  // Auto-scroll to newest.
   useEffect(() => {
     if (bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -177,7 +159,7 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
     display: 'flex',
     flexDirection: 'column',
     height: 'calc(100vh - 132px)',
-    background: '#f8fafc',
+    background: '#080808',
   };
 
   return (
@@ -185,29 +167,29 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
       {/* Conversation header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '12px',
-        padding: '12px 16px', background: '#ffffff', borderBottom: '1px solid #e2e8f0',
+        padding: '12px 16px', background: '#0B0B0B', borderBottom: '1px solid rgba(212, 175, 55, 0.2)',
         position: 'sticky', top: 0, zIndex: 10,
       }}>
         <button
           onClick={onBack}
           aria-label={t('backLabel')}
-          style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: '#0f172a', display: 'flex' }}
+          style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: '#D4AF37', display: 'flex' }}
         >
-          <ArrowLeft size={22} />
+          <ArrowLeft size={22} color="#D4AF37" />
         </button>
         <div style={{
           width: '38px', height: '38px', borderRadius: '50%', flexShrink: 0,
-          background: accent, color: '#ffffff', fontWeight: 800, fontSize: '16px',
+          background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)', color: '#050505', fontWeight: 800, fontSize: '16px',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           {initial}
         </div>
         <div style={{ minWidth: 0 }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#FFFFFF', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {header.title || '…'}
           </h3>
           {header.subtitle ? (
-            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>{header.subtitle}</span>
+            <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 600 }}>{header.subtitle}</span>
           ) : null}
         </div>
       </div>
@@ -216,44 +198,45 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
       {offline && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center',
-          background: '#fef3c7', color: '#92400e', fontSize: '12px', fontWeight: 700, padding: '8px 12px',
+          background: '#151515', borderBottom: '1px solid rgba(212, 175, 55, 0.2)', color: '#F2D675', fontSize: '12px', fontWeight: 700, padding: '8px 12px',
         }}>
-          <WifiOff size={14} /> {t('chatOffline')}
+          <WifiOff size={14} color="#F2D675" /> {t('chatOffline')}
         </div>
       )}
 
       {/* Message list / states */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
         {status === 'loading' && (
-          <div style={{ textAlign: 'center', color: '#64748b', fontSize: '13px', marginTop: '32px' }}>
+          <div style={{ textAlign: 'center', color: '#B8B8B8', fontSize: '13px', marginTop: '32px' }}>
             {t('loadingChat')}
           </div>
         )}
 
         {status === 'notfound' && (
-          <div style={{ textAlign: 'center', color: '#64748b', marginTop: '40px' }}>
-            <AlertCircle size={32} color="#94a3b8" />
-            <p style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginTop: '10px' }}>{t('conversationNotFound')}</p>
+          <div style={{ textAlign: 'center', color: '#B8B8B8', marginTop: '40px' }}>
+            <AlertCircle size={32} color="#D4AF37" />
+            <p style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF', marginTop: '10px' }}>{t('conversationNotFound')}</p>
           </div>
         )}
 
         {status === 'error' && (
-          <div style={{ textAlign: 'center', color: '#64748b', marginTop: '40px' }}>
+          <div style={{ textAlign: 'center', color: '#B8B8B8', marginTop: '40px' }}>
             <AlertCircle size={32} color="#ef4444" />
-            <p style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: '10px 0 14px' }}>{t('chatLoadError')}</p>
+            <p style={{ fontSize: '14px', fontWeight: 600, color: '#FFFFFF', margin: '10px 0 14px' }}>{t('chatLoadError')}</p>
             <button
               onClick={() => { setStatus('loading'); load({ initial: true }); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: accent, color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 16px', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+              className="btn-primary"
+              style={{ padding: '8px 16px', fontSize: '13px' }}
             >
-              <RefreshCw size={14} /> {t('retry')}
+              <RefreshCw size={14} color="#050505" /> {t('retry')}
             </button>
           </div>
         )}
 
         {status === 'ready' && messages.length === 0 && (
-          <div style={{ textAlign: 'center', color: '#64748b', marginTop: '48px' }}>
-            <p style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{t('noMessages')}</p>
-            <p style={{ fontSize: '13px', marginTop: '6px' }}>{t('noMessagesHint')}</p>
+          <div style={{ textAlign: 'center', color: '#B8B8B8', marginTop: '48px' }}>
+            <p style={{ fontSize: '15px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>{t('noMessages')}</p>
+            <p style={{ fontSize: '13px', marginTop: '6px', color: '#B8B8B8' }}>{t('noMessagesHint')}</p>
           </div>
         )}
 
@@ -263,17 +246,18 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
             <div key={m.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start', marginBottom: '10px' }}>
               <div style={{ maxWidth: '78%' }}>
                 <div style={{
-                  background: mine ? accent : '#ffffff',
-                  color: mine ? '#ffffff' : '#0f172a',
-                  border: mine ? 'none' : '1px solid #e2e8f0',
+                  background: mine ? 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)' : '#1A1A1A',
+                  color: mine ? '#050505' : '#FFFFFF',
+                  border: mine ? 'none' : '1px solid rgba(212, 175, 55, 0.15)',
                   padding: '10px 14px',
                   borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                   fontSize: '14px', lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                  fontWeight: mine ? 600 : 400
                 }}>
                   {m.message_text}
                 </div>
-                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '3px', textAlign: mine ? 'right' : 'left', fontWeight: 600 }}>
+                <div style={{ fontSize: '10px', color: '#777777', marginTop: '3px', textAlign: mine ? 'right' : 'left', fontWeight: 600 }}>
                   {mine ? t('you') : ''} {formatTime(m.created_at)}
                 </div>
               </div>
@@ -284,10 +268,10 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
       </div>
 
       {/* Composer */}
-      <div style={{ background: '#ffffff', borderTop: '1px solid #e2e8f0', padding: '10px 12px' }}>
+      <div style={{ background: '#0B0B0B', borderTop: '1px solid rgba(212, 175, 55, 0.2)', padding: '10px 12px' }}>
         {sendError && (
           <div style={{ fontSize: '12px', color: '#ef4444', fontWeight: 600, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <AlertCircle size={13} /> {t('chatSendError')}
+            <AlertCircle size={13} color="#ef4444" /> {t('chatSendError')}
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
@@ -301,8 +285,8 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
             disabled={status === 'notfound'}
             style={{
               flex: 1, resize: 'none', maxHeight: '120px', minHeight: '42px',
-              border: '1px solid #e2e8f0', borderRadius: '12px', padding: '11px 14px',
-              fontSize: '14px', fontFamily: 'inherit', outline: 'none', background: '#f8fafc',
+              border: '1px solid #303030', borderRadius: '12px', padding: '11px 14px',
+              fontSize: '14px', fontFamily: 'inherit', outline: 'none', background: '#111111', color: '#FFFFFF'
             }}
           />
           <button
@@ -311,13 +295,14 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
             aria-label={t('send')}
             style={{
               flexShrink: 0, width: '46px', height: '46px', borderRadius: '12px', border: 'none',
-              background: (sending || !draft.trim() || status === 'notfound') ? '#cbd5e1' : accent,
-              color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: (sending || !draft.trim() || status === 'notfound') ? '#1A1A1A' : 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
+              color: (sending || !draft.trim() || status === 'notfound') ? '#777777' : '#050505',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: (sending || !draft.trim() || status === 'notfound') ? 'not-allowed' : 'pointer',
-              transition: 'background 0.2s ease',
+              transition: 'all 0.2s ease',
             }}
           >
-            {sending ? <RefreshCw size={18} className="chat-spin" /> : <Send size={18} />}
+            {sending ? <RefreshCw size={18} className="chat-spin" color="#777777" /> : <Send size={18} color={(sending || !draft.trim() || status === 'notfound') ? '#777777' : '#050505'} />}
           </button>
         </div>
       </div>

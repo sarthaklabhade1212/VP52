@@ -5,6 +5,8 @@ import { useI18n } from '../i18n/I18nContext';
 import { APP_NAME } from '../config/brand';
 import MerchantMap from '../components/MerchantMap';
 import SimulatedAdModal from '../components/SimulatedAdModal';
+import vp52Logo from '../assets/vp52-logo.png';
+import confetti from 'canvas-confetti';
 import {
   checkLocationPermission,
   requestLocationPermission,
@@ -36,7 +38,7 @@ import {
 
 export default function CustomerHome() {
   const navigate = useNavigate();
-  const { user, token } = useAuth();
+  const { user, token, updateUserBalance } = useAuth();
   const { t } = useI18n();
 
   const [shops, setShops] = useState([]);
@@ -46,36 +48,31 @@ export default function CustomerHome() {
   // Search & Filters State
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [distanceFilter, setDistanceFilter] = useState('5'); // '1' | '3' | '5' | '10' | '25' | '50' | 'all' — default 5 km
-  const [viewMode, setViewMode] = useState('list'); // 'list' | 'map'
+  const [distanceFilter, setDistanceFilter] = useState('5');
+  const [viewMode, setViewMode] = useState('list');
 
-  // 6-Hour Reward Session State
-  const [session, setSession] = useState(null);
-  const [sessionLoading, setSessionLoading] = useState(true);
+  // VP52 6-Hour Coin Session System State
+  const [sessionState, setSessionState] = useState('NO_SESSION'); // NO_SESSION, ADS_IN_PROGRESS, READY_TO_START, ACTIVE, COMPLETED_PENDING_CLAIM
+  const [coinSession, setCoinSession] = useState(null);
+  const [liveEarnedCoins, setLiveEarnedCoins] = useState(0.0);
+  const [liveRemainingSeconds, setLiveRemainingSeconds] = useState(0);
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [isClaimingSession, setIsClaimingSession] = useState(false);
   const [isAdModalOpen, setIsAdModalOpen] = useState(false);
-  const [adRewardMsg, setAdRewardMsg] = useState(null);
+  const [sessionAdMsg, setSessionAdMsg] = useState(null);
 
   // Level Progression State
   const [levelInfo, setLevelInfo] = useState(null);
 
-  // GPS Location & Permission State.
-  // userLocation stays null until the customer explicitly shares it — we never
-  // seed a silent default, so distance/radius only apply once location is real.
+  // GPS Location & Permission State
   const [userLocation, setUserLocation] = useState(null);
-  const [locationStatus, setLocationStatus] = useState('idle'); // 'idle' | 'prompt' | 'requesting' | 'granted' | 'denied' | 'error'
+  const [locationStatus, setLocationStatus] = useState('idle');
   const [locationErrorMessage, setLocationErrorMessage] = useState('');
-  // Set when the customer taps "Not Now". We then stop showing the opt-in prompt
-  // and never auto-request again this session (only an explicit tap re-asks).
   const [locationPromptDismissed, setLocationPromptDismissed] = useState(false);
 
-  // Map view falls back to a neutral city center purely for framing the map when
-  // no real location is shared. This is NOT sent to the server for distance math.
   const MAP_FALLBACK = { lat: 18.5204, lng: 73.8567 };
   const mapCenter = userLocation || MAP_FALLBACK;
 
-  // Chat: create-or-reuse a one-to-one conversation with a shop, then open it.
-  // The server derives the customer from the JWT and dedupes by (customer, shop),
-  // so tapping this repeatedly always resolves to the same conversation.
   const [startingChatShopId, setStartingChatShopId] = useState(null);
 
   const startChat = (shopId) => {
@@ -97,9 +94,6 @@ export default function CustomerHome() {
   };
 
   const fetchShops = () => {
-    // Only send coordinates + radius when the customer has shared real location.
-    // Without it, the server returns all valid-coordinate shops (no distance,
-    // no radius filtering) — we never fabricate a location.
     const params = { search, category };
     if (userLocation) {
       params.lat = userLocation.lat;
@@ -122,20 +116,18 @@ export default function CustomerHome() {
       .finally(() => setLoading(false));
   };
 
-  const fetchSessionStatus = () => {
-    fetch('/api/customer/reward-session/status', {
+  const fetchCoinSession = () => {
+    fetch('/api/customer/coin-session', {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(d => {
-        if (d.success && d.active) {
-          setSession(d.session);
-        } else {
-          setSession(null);
+        if (d.success) {
+          setSessionState(d.session_state || 'NO_SESSION');
+          setCoinSession(d.session || null);
         }
       })
-      .catch(console.error)
-      .finally(() => setSessionLoading(false));
+      .catch(console.error);
   };
 
   const fetchLevelInfo = () => {
@@ -147,6 +139,103 @@ export default function CustomerHome() {
         if (d.success) setLevelInfo(d);
       })
       .catch(console.error);
+  };
+
+  // Timestamp-driven live coin generation calculations (Prevents timer drift & pauses)
+  useEffect(() => {
+    if (!coinSession || coinSession.status !== 'active' || !coinSession.started_at) return;
+
+    const updateLiveCoins = () => {
+      const now = Date.now();
+      const startedMs = new Date(coinSession.started_at).getTime();
+      const expiresMs = new Date(coinSession.expires_at).getTime();
+      const durationSec = coinSession.duration_seconds || 21600;
+
+      const elapsedSec = Math.max(0, (now - startedMs) / 1000);
+      const remainingSec = Math.max(0, Math.ceil((expiresMs - now) / 1000));
+      const coins = Math.min(100.0, Math.max(0.0, (elapsedSec / durationSec) * 100.0));
+
+      setLiveEarnedCoins(coins);
+      setLiveRemainingSeconds(remainingSec);
+
+      if (remainingSec <= 0 || now >= expiresMs) {
+        setLiveEarnedCoins(100.0);
+        setLiveRemainingSeconds(0);
+        fetchCoinSession();
+      }
+    };
+
+    updateLiveCoins();
+    const interval = setInterval(updateLiveCoins, 1000);
+    return () => clearInterval(interval);
+  }, [coinSession?.id, coinSession?.started_at, coinSession?.expires_at, coinSession?.status]);
+
+  const handleWatchSessionAd = async () => {
+    setIsAdModalOpen(false);
+    setSessionAdMsg(null);
+    try {
+      const res = await fetch('/api/customer/coin-session/ad-complete', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSessionAdMsg(data.message);
+        fetchCoinSession();
+      } else {
+        setSessionAdMsg(data.error);
+      }
+    } catch (err) {
+      console.error('Session ad completion error:', err);
+    }
+  };
+
+  const handleStartSession = async () => {
+    setIsStartingSession(true);
+    setSessionAdMsg(null);
+    try {
+      const res = await fetch('/api/customer/coin-session/start', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSessionAdMsg(data.message);
+        fetchCoinSession();
+      } else {
+        setSessionAdMsg(data.error);
+      }
+    } catch (err) {
+      console.error('Start session error:', err);
+    } finally {
+      setIsStartingSession(false);
+    }
+  };
+
+  const handleClaimSessionReward = async () => {
+    setIsClaimingSession(true);
+    setSessionAdMsg(null);
+    try {
+      const res = await fetch('/api/customer/coin-session/complete', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        try { confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 } }); } catch (_) {}
+        setSessionAdMsg(data.message);
+        if (data.newBalance !== undefined) updateUserBalance(data.newBalance);
+        fetchCoinSession();
+        fetchShops();
+        fetchLevelInfo();
+      } else {
+        setSessionAdMsg(data.error);
+      }
+    } catch (err) {
+      console.error('Claim session reward error:', err);
+    } finally {
+      setIsClaimingSession(false);
+    }
   };
 
   const handleRequestLocation = async () => {
@@ -165,20 +254,15 @@ export default function CustomerHome() {
       }
     } catch (err) {
       console.warn('[CustomerHome] Location request error:', err);
-      // Permission may have been granted but the fix was unavailable/timed out.
       setLocationStatus('error');
       setLocationErrorMessage(err.message || t('locUnavailableMsg'));
     }
   };
 
-  // "Not Now" — stop prompting for the rest of the session. We do not request
-  // permission again unless the customer explicitly taps Enable Location.
   const handleDismissLocation = () => {
     setLocationPromptDismissed(true);
   };
 
-  // Launch external turn-by-turn directions to the shop. Uses the universal
-  // Google Maps URL (no SDK/API key required); falls back to a plain query URL.
   const handleGetDirections = (shop) => {
     if (shop.latitude == null || shop.longitude == null) return;
     const dest = `${shop.latitude},${shop.longitude}`;
@@ -186,7 +270,6 @@ export default function CustomerHome() {
     try {
       const win = window.open(primary, '_blank', 'noopener,noreferrer');
       if (!win) {
-        // Popup blocked — fall back to navigating the current tab.
         window.location.href = primary;
       }
     } catch (err) {
@@ -196,8 +279,6 @@ export default function CustomerHome() {
 
   useEffect(() => {
     let cancelled = false;
-    // On load we only CHECK the existing permission. We never auto-request —
-    // an un-granted state simply surfaces the opt-in prompt for the customer.
     const initLocation = async () => {
       try {
         const perm = await checkLocationPermission();
@@ -210,13 +291,13 @@ export default function CustomerHome() {
             setLocationStatus('granted');
           } catch (err) {
             if (cancelled) return;
-            setLocationStatus('prompt'); // permission ok, but no fix yet — let them retry
+            setLocationStatus('prompt');
           }
         } else if (perm === 'denied') {
           setLocationStatus('denied');
           setLocationErrorMessage(t('locDeniedMsg'));
         } else {
-          setLocationStatus('prompt'); // 'prompt' | 'error' → show opt-in, do NOT auto-request
+          setLocationStatus('prompt');
         }
       } catch (err) {
         if (!cancelled) setLocationStatus('prompt');
@@ -230,92 +311,57 @@ export default function CustomerHome() {
   useEffect(() => {
     if (token) {
       fetchShops();
-      fetchSessionStatus();
+      fetchCoinSession();
       fetchLevelInfo();
     }
   }, [token, search, category, distanceFilter, userLocation]);
 
-  // Session timer countdown effect
-  useEffect(() => {
-    if (!session || !session.remaining_seconds) return;
-    const interval = setInterval(() => {
-      setSession(prev => {
-        if (!prev || prev.remaining_seconds <= 1) {
-          fetchSessionStatus();
-          return null;
-        }
-        return { ...prev, remaining_seconds: prev.remaining_seconds - 1 };
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [session?.id]);
-
-  const handleAdWatchComplete = async () => {
-    setIsAdModalOpen(false);
-    setAdRewardMsg(null);
-
-    try {
-      const res = await fetch('/api/customer/reward-session/watch-ad', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAdRewardMsg(data.message);
-        fetchSessionStatus();
-        fetchLevelInfo();
-        fetchShops();
-      }
-    } catch (err) {
-      console.error('Watch ad error:', err);
-    }
-  };
-
   const formatTime = (seconds) => {
-    if (!seconds) return '00:00:00';
+    if (!seconds || seconds <= 0) return '00:00:00';
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const categories = ['All', 'Restaurant', 'Hotel', 'Food', 'Clothing', 'Paithani', 'Salon', 'Jewellery', 'Grocery'];
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', paddingBottom: '40px' }}>
+    <div style={{ maxWidth: '800px', margin: '0 auto', paddingBottom: '40px', background: '#050505' }}>
       {/* Top Profile & Points Card */}
       <div style={{
-        background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+        background: 'linear-gradient(135deg, #0B0B0B 0%, #17130A 50%, #0B0B0B 100%)',
         borderRadius: '24px',
         padding: '24px',
-        color: '#ffffff',
+        color: '#FFFFFF',
         marginBottom: '24px',
-        boxShadow: '0 12px 30px rgba(79, 70, 229, 0.3)'
+        border: '1px solid rgba(212, 175, 55, 0.25)',
+        boxShadow: '0 15px 35px rgba(0, 0, 0, 0.8), 0 0 20px rgba(212, 175, 55, 0.1)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
-              width: '52px', height: '52px', borderRadius: '50%', background: '#ffffff', color: '#4f46e5',
+              width: '52px', height: '52px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)', color: '#050505',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '22px'
             }}>
               {user ? user.full_name.charAt(0).toUpperCase() : 'C'}
             </div>
             <div>
-              <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0 }}>{user ? user.full_name : 'Customer'}</h2>
-              <span style={{ fontSize: '12px', color: '#c7d2fe', fontWeight: 600 }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: '#FFFFFF' }}>{user ? user.full_name : 'Customer'}</h2>
+              <span style={{ fontSize: '12px', color: '#B8B8B8', fontWeight: 600 }}>
                 {user ? user.email : ''}
               </span>
             </div>
           </div>
 
           <div style={{ textAlign: 'right' }}>
-            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#e0e7ff', display: 'block' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#B8B8B8', display: 'block' }}>
               AVAILABLE COINS
             </span>
-            <span style={{ fontSize: '28px', fontWeight: 800 }}>
+            <span style={{ fontSize: '28px', fontWeight: 800, color: '#F2D675' }}>
               🪙 {user ? user.balance.toLocaleString() : 0}
             </span>
-            <span style={{ fontSize: '11px', color: '#a7f3d0', display: 'block', fontWeight: 700 }}>
+            <span style={{ fontSize: '11px', color: '#D4AF37', display: 'block', fontWeight: 700 }}>
               (₹{user ? user.balance.toLocaleString() : 0} Discount Value)
             </span>
           </div>
@@ -323,196 +369,258 @@ export default function CustomerHome() {
 
         {/* Level Progression & Discount Cap Card */}
         {levelInfo && (
-          <div style={{ background: 'rgba(255, 255, 255, 0.15)', borderRadius: '16px', padding: '14px 18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 800, marginBottom: '6px' }}>
-              <span>🏆 Tier: {levelInfo.currentLevel} (Max {levelInfo.discountCapPercent}% Discount Cap)</span>
-              <span>Next: {levelInfo.nextLevel} ({levelInfo.lifetimeCoins}/{levelInfo.minForNext} Coins)</span>
+          <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '16px', padding: '14px 18px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 800, marginBottom: '6px', color: '#FFFFFF' }}>
+              <span>🏆 Tier: <span style={{ color: '#F2D675' }}>{levelInfo.currentLevel}</span> ({levelInfo.discountCapPercent}% Cap)</span>
+              <span style={{ color: '#B8B8B8' }}>Next: {levelInfo.nextLevel} ({levelInfo.lifetimeCoins}/{levelInfo.minForNext} Coins)</span>
             </div>
-            <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.2)', borderRadius: '4px', overflow: 'hidden', marginBottom: '6px' }}>
-              <div style={{ width: `${levelInfo.progressPercent}%`, height: '100%', background: '#10b981', transition: 'width 0.3s ease' }} />
+            <div style={{ width: '100%', height: '8px', background: '#1A1A1A', borderRadius: '4px', overflow: 'hidden', marginBottom: '6px' }}>
+              <div style={{ width: `${levelInfo.progressPercent}%`, height: '100%', background: 'linear-gradient(90deg, #C9A227 0%, #F2D675 100%)', transition: 'width 0.3s ease' }} />
             </div>
-            <div style={{ fontSize: '11px', color: '#c7d2fe' }}>
-              {levelInfo.benefits} • Lifetime Coins: <strong>{levelInfo.lifetimeCoins}</strong>
+            <div style={{ fontSize: '11px', color: '#B8B8B8' }}>
+              {levelInfo.benefits} • Lifetime Coins: <strong style={{ color: '#F2D675' }}>{levelInfo.lifetimeCoins}</strong>
             </div>
           </div>
         )}
       </div>
 
-      {/* 6-HOUR REWARD SESSION CARD */}
+      {/* VP52 6-HOUR COIN SESSION SYSTEM CARD */}
       <div style={{
-        background: '#ffffff',
+        background: '#111111',
         borderRadius: '24px',
         padding: '24px',
         marginBottom: '24px',
-        border: '2px solid #a7f3d0',
-        boxShadow: '0 8px 25px rgba(0,0,0,0.04)'
+        border: '1px solid rgba(212, 175, 55, 0.3)',
+        boxShadow: '0 12px 35px rgba(0, 0, 0, 0.8), 0 0 25px rgba(212, 175, 55, 0.08)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        {/* Card Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '44px', height: '44px', borderRadius: '14px', background: '#dcfce7', color: '#059669',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}>
-              <Clock size={24} />
-            </div>
+            <img src={vp52Logo} alt="VP52" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
             <div>
-              <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a', margin: 0 }}>6-Hour Reward Session</h3>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>Watch up to 3 demo reward ads per session</span>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>VP52 Earning Session</h3>
+              <span style={{ fontSize: '12px', color: '#B8B8B8' }}>Earn 100 VP52 Coins in 6 Hours</span>
             </div>
           </div>
 
-          {session && (
-            <div style={{ background: '#ecfdf5', padding: '8px 16px', borderRadius: '12px', border: '1px solid #a7f3d0', textAlign: 'center' }}>
-              <span style={{ fontSize: '10px', color: '#059669', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>
-                SESSION TIMER
+          {(sessionState === 'ACTIVE' || sessionState === 'COMPLETED_PENDING_CLAIM') && (
+            <div style={{ background: '#151515', padding: '8px 14px', borderRadius: '12px', border: '1px solid rgba(212, 175, 55, 0.3)', textAlign: 'center' }}>
+              <span style={{ fontSize: '10px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 800, display: 'block' }}>
+                TIME REMAINING
               </span>
-              <span style={{ fontSize: '16px', fontWeight: 800, color: '#047857', fontFamily: 'monospace' }}>
-                {formatTime(session.remaining_seconds)}
+              <span style={{ fontSize: '16px', fontWeight: 800, color: '#F2D675', fontFamily: 'monospace' }}>
+                {formatTime(liveRemainingSeconds)}
               </span>
             </div>
           )}
         </div>
 
-        {adRewardMsg && (
-          <div style={{ background: '#dcfce7', border: '1px solid #86efac', color: '#15803d', padding: '12px', borderRadius: '14px', fontSize: '13px', fontWeight: 700, marginBottom: '16px', textAlign: 'center' }}>
-            {adRewardMsg}
+        {sessionAdMsg && (
+          <div style={{ background: 'rgba(212, 175, 55, 0.15)', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '12px', borderRadius: '14px', fontSize: '13px', fontWeight: 700, marginBottom: '16px', textAlign: 'center' }}>
+            {sessionAdMsg}
           </div>
         )}
 
-        {session ? (
+        {/* STATE 1, 2, 3: PRE-SESSION ADS REQUIREMENT */}
+        {(sessionState === 'NO_SESSION' || sessionState === 'ADS_IN_PROGRESS' || sessionState === 'READY_TO_START') && (
           <div>
-            {/* Ad Progress Dots */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '12px 16px', borderRadius: '14px', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
-              <div>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block', fontWeight: 700 }}>ADS WATCHED IN SESSION</span>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '4px', alignItems: 'center' }}>
-                  {[1, 2, 3].map(step => (
-                    <span
+            <div style={{ background: '#151515', border: '1px solid rgba(212, 175, 55, 0.2)', padding: '16px', borderRadius: '16px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFFFFF' }}>Watch 3 Ads to Start Session</span>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: '#F2D675' }}>
+                  Ads Completed: {coinSession?.ads_completed || 0} / 3
+                </span>
+              </div>
+
+              {/* 3 Step Indicators */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                {[1, 2, 3].map(step => {
+                  const done = step <= (coinSession?.ads_completed || 0);
+                  return (
+                    <div
                       key={step}
                       style={{
-                        width: '14px', height: '14px', borderRadius: '50%',
-                        background: step <= (session.ads_watched || 0) ? '#10b981' : '#cbd5e1',
-                        display: 'inline-block'
+                        flex: 1,
+                        height: '8px',
+                        borderRadius: '4px',
+                        background: done ? 'linear-gradient(90deg, #C9A227 0%, #F2D675 100%)' : '#222222',
+                        transition: 'all 0.3s ease'
                       }}
                     />
-                  ))}
-                  <strong style={{ fontSize: '13px', color: '#0f172a', marginLeft: '6px' }}>
-                    {session.ads_watched || 0} / {session.max_ads || 3}
-                  </strong>
-                </div>
+                  );
+                })}
               </div>
-
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block', fontWeight: 700 }}>SESSION COINS</span>
-                <strong style={{ fontSize: '16px', color: '#4f46e5' }}>
-                  🪙 {session.coins_earned || 0} Coins
-                </strong>
-              </div>
+              <span style={{ fontSize: '11px', color: '#B8B8B8' }}>
+                {coinSession?.ads_completed >= 3
+                  ? '✅ All 3 ads completed! Unlock your 6-hour session now.'
+                  : `Complete ${3 - (coinSession?.ads_completed || 0)} more advertisement(s) to unlock.`}
+              </span>
             </div>
 
-            {session.can_watch_ad ? (
+            {coinSession?.ads_completed >= 3 ? (
+              <button
+                type="button"
+                onClick={handleStartSession}
+                disabled={isStartingSession}
+                className="btn-primary pulse-glow"
+                style={{ width: '100%', padding: '16px', fontSize: '16px', borderRadius: '14px', justifyContent: 'center' }}
+              >
+                🚀 {isStartingSession ? 'Starting Session...' : 'Start 6-Hour Session (+100 Coins)'}
+              </button>
+            ) : (
               <button
                 type="button"
                 onClick={() => setIsAdModalOpen(true)}
-                className="btn-success pulse-glow"
-                style={{ width: '100%', padding: '14px', fontSize: '15px', borderRadius: '14px', justifyContent: 'center' }}
+                className="btn-primary"
+                style={{ width: '100%', padding: '16px', fontSize: '15px', borderRadius: '14px', justifyContent: 'center' }}
               >
-                <PlayCircle size={20} /> Watch Demo Reward Ad (+{session.coins_per_ad || 2} Coins)
+                <PlayCircle size={20} color="#050505" /> Watch Ad ({coinSession?.ads_completed || 0}/3 Completed)
               </button>
-            ) : (
-              <div style={{ background: '#f1f5f9', padding: '14px', borderRadius: '14px', textAlign: 'center', fontSize: '13px', fontWeight: 700, color: '#475569', border: '1px solid #cbd5e1' }}>
-                ✅ Session Ads Completed ({session.ads_watched}/{session.max_ads}). Next session will start automatically when eligible.
-              </div>
             )}
           </div>
-        ) : (
-          <div style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '14px', borderRadius: '14px', textAlign: 'center', fontSize: '13px', color: '#b45309', fontWeight: 700 }}>
-            ⏳ Daily session limit reached (2 sessions per 24 hours). Check back tomorrow for new reward sessions!
+        )}
+
+        {/* STATE 4: ACTIVE LIVE EARNING SESSION */}
+        {sessionState === 'ACTIVE' && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ background: 'radial-gradient(circle, rgba(212, 175, 55, 0.15) 0%, #151515 80%)', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '20px', padding: '24px 16px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#B8B8B8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px' }}>
+                VP52 COINS EARNED
+              </div>
+
+              <div style={{ fontSize: '36px', fontWeight: 900, color: '#F2D675', fontFamily: 'monospace', letterSpacing: '0.02em', margin: '4px 0' }}>
+                {liveEarnedCoins.toFixed(5)}
+              </div>
+
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#D4AF37', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#111111', padding: '4px 12px', borderRadius: '99px', border: '1px solid rgba(212, 175, 55, 0.2)', marginBottom: '14px' }}>
+                <Sparkles size={14} color="#F2D675" /> +0.00463 COINS / SECOND
+              </div>
+
+              {/* Progress Bar */}
+              <div style={{ width: '100%', height: '10px', background: '#050505', borderRadius: '5px', overflow: 'hidden', border: '1px solid rgba(212, 175, 55, 0.2)', marginBottom: '8px' }}>
+                <div style={{ width: `${Math.min(100, Math.max(0, liveEarnedCoins))}%`, height: '100%', background: 'linear-gradient(90deg, #C9A227 0%, #F2D675 100%)', transition: 'width 0.5s linear' }} />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 700, color: '#B8B8B8' }}>
+                <span>SESSION PROGRESS</span>
+                <span style={{ color: '#F2D675' }}>{Math.min(100, Math.max(0, liveEarnedCoins)).toFixed(2)}%</span>
+              </div>
+            </div>
+
+            <span style={{ fontSize: '11px', color: '#777777', fontWeight: 600 }}>
+              ⚡ Earning rate synced with server timestamps. Progress continues when app is closed.
+            </span>
+          </div>
+        )}
+
+        {/* STATE 5: SESSION COMPLETED / CLAIM REWARD */}
+        {sessionState === 'COMPLETED_PENDING_CLAIM' && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ background: 'linear-gradient(135deg, #151515 0%, #1F190B 100%)', border: '1px solid #D4AF37', borderRadius: '20px', padding: '24px 16px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 800, color: '#F2D675', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px' }}>
+                🎉 SESSION COMPLETE!
+              </div>
+
+              <div style={{ fontSize: '38px', fontWeight: 900, color: '#FFFFFF', margin: '6px 0' }}>
+                100.00000
+              </div>
+
+              <div style={{ fontSize: '14px', fontWeight: 800, color: '#F2D675', marginBottom: '16px' }}>
+                VP52 COINS EARNED
+              </div>
+
+              <button
+                type="button"
+                onClick={handleClaimSessionReward}
+                disabled={isClaimingSession}
+                className="btn-primary pulse-glow"
+                style={{ width: '100%', padding: '16px', fontSize: '16px', borderRadius: '14px', justifyContent: 'center' }}
+              >
+                🎁 {isClaimingSession ? 'Claiming 100 Coins...' : 'Claim 100 VP52 Coins to Wallet'}
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       {/* LOCATION OPT-IN / STATUS CARD */}
       {locationStatus === 'granted' ? (
-        // Active: show coordinates + a manual refresh (no auto re-requesting).
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '18px', padding: '14px 18px', marginBottom: '20px', fontSize: '13px' }}>
+        <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.25)', borderRadius: '18px', padding: '14px 18px', marginBottom: '20px', fontSize: '13px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Navigation size={20} color="#16a34a" />
+              <Navigation size={20} color="#D4AF37" />
               <div>
-                <span style={{ fontWeight: 800, color: '#0f172a', display: 'block' }}>
+                <span style={{ fontWeight: 800, color: '#FFFFFF', display: 'block' }}>
                   {t('locActive')} ({userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)})
                 </span>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>{t('locGrantedSub')}</span>
+                <span style={{ fontSize: '11px', color: '#B8B8B8' }}>{t('locGrantedSub')}</span>
               </div>
             </div>
             <button
               type="button"
               onClick={handleRequestLocation}
-              style={{ padding: '8px 14px', borderRadius: '12px', border: 'none', background: '#dcfce7', color: '#15803d', fontWeight: 800, fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+              style={{ padding: '8px 14px', borderRadius: '12px', border: '1px solid rgba(212, 175, 55, 0.3)', background: '#151515', color: '#F2D675', fontWeight: 800, fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
             >
-              <RefreshCw size={14} /> {t('locRefresh')}
+              <RefreshCw size={14} color="#D4AF37" /> {t('locRefresh')}
             </button>
           </div>
         </div>
       ) : locationStatus === 'requesting' ? (
-        // Obtaining a fix.
-        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '14px 18px', marginBottom: '20px', fontSize: '13px' }}>
+        <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.25)', borderRadius: '18px', padding: '14px 18px', marginBottom: '20px', fontSize: '13px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <RefreshCw size={18} color="#4f46e5" style={{ animation: 'spin 1s linear infinite' }} />
-            <span style={{ fontWeight: 800, color: '#0f172a' }}>{t('locObtaining')}</span>
+            <RefreshCw size={18} color="#D4AF37" style={{ animation: 'spin 1s linear infinite' }} />
+            <span style={{ fontWeight: 800, color: '#FFFFFF' }}>{t('locObtaining')}</span>
           </div>
         </div>
       ) : locationPromptDismissed ? (
-        // Customer chose "Not Now": slim, non-nagging bar with an opt-in later.
-        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '12px 16px', marginBottom: '20px', fontSize: '12.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-          <span style={{ color: '#64748b', fontWeight: 600 }}>{t('enableLocationForDistance')}</span>
+        <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.25)', borderRadius: '18px', padding: '12px 16px', marginBottom: '20px', fontSize: '12.5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+          <span style={{ color: '#B8B8B8', fontWeight: 600 }}>{t('enableLocationForDistance')}</span>
           <button
             type="button"
             onClick={handleRequestLocation}
-            style={{ padding: '8px 14px', borderRadius: '12px', border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 800, fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            className="btn-primary"
+            style={{ padding: '8px 14px', fontSize: '12px', whiteSpace: 'nowrap' }}
           >
             {t('locEnable')}
           </button>
         </div>
       ) : (
-        // Opt-in prompt for idle / prompt / denied / error. Never auto-requests.
         (() => {
           const isProblem = locationStatus === 'denied' || locationStatus === 'error';
-          const bg = locationStatus === 'denied' ? '#fff1f2' : locationStatus === 'error' ? '#fefce8' : '#eef2ff';
-          const border = locationStatus === 'denied' ? '#fecdd3' : locationStatus === 'error' ? '#fef08a' : '#c7d2fe';
           const sub = locationStatus === 'denied'
             ? (locationErrorMessage || t('locDenied'))
             : locationStatus === 'error'
             ? (locationErrorMessage || t('locUnavailableMsg'))
             : t('locEnableSub');
           return (
-            <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: '18px', padding: '16px 18px', marginBottom: '20px', fontSize: '13px' }}>
+            <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.25)', borderRadius: '18px', padding: '16px 18px', marginBottom: '20px', fontSize: '13px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '12px' }}>
-                <MapPin size={22} color="#4f46e5" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <MapPin size={22} color="#D4AF37" style={{ flexShrink: 0, marginTop: '2px' }} />
                 <div>
-                  <span style={{ fontWeight: 800, color: '#0f172a', display: 'block', fontSize: '15px' }}>{t('locFindNearby')}</span>
-                  <span style={{ fontSize: '12px', color: '#475569' }}>{sub}</span>
+                  <span style={{ fontWeight: 800, color: '#FFFFFF', display: 'block', fontSize: '15px' }}>{t('locFindNearby')}</span>
+                  <span style={{ fontSize: '12px', color: '#B8B8B8' }}>{sub}</span>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
                   type="button"
                   onClick={handleRequestLocation}
-                  style={{ flex: 1, padding: '11px', borderRadius: '12px', border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 800, fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  className="btn-primary"
+                  style={{ flex: 1, padding: '11px', fontSize: '13px', justifyContent: 'center' }}
                 >
-                  <Navigation size={15} /> {isProblem ? t('locRetry') : t('locEnable')}
+                  <Navigation size={15} color="#050505" /> {isProblem ? t('locRetry') : t('locEnable')}
                 </button>
                 <button
                   type="button"
                   onClick={handleDismissLocation}
-                  style={{ flex: 1, padding: '11px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', fontWeight: 800, fontSize: '13px', cursor: 'pointer' }}
+                  className="btn-secondary"
+                  style={{ flex: 1, padding: '11px', fontSize: '13px', justifyContent: 'center' }}
                 >
                   {t('locNotNow')}
                 </button>
               </div>
               {locationStatus === 'denied' && (
-                <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #fecdd3', fontSize: '11px', color: '#9f1239' }}>
+                <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed rgba(212, 175, 55, 0.3)', fontSize: '11px', color: '#F2D675' }}>
                   ℹ️ {t('locDeniedHelp').replace('{app}', APP_NAME)}
                 </div>
               )}
@@ -524,7 +632,7 @@ export default function CustomerHome() {
       {/* Prominent Search Bar */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ position: 'relative' }}>
-          <Search size={20} color="#94a3b8" style={{ position: 'absolute', left: '16px', top: '16px' }} />
+          <Search size={20} color="#C9A227" style={{ position: 'absolute', left: '16px', top: '16px' }} />
           <input
             type="text"
             className="form-input"
@@ -549,10 +657,10 @@ export default function CustomerHome() {
                 fontSize: '12px',
                 fontWeight: 700,
                 whiteSpace: 'nowrap',
-                border: 'none',
-                background: category === c ? '#4f46e5' : '#ffffff',
-                color: category === c ? '#ffffff' : '#64748b',
-                boxShadow: category === c ? '0 4px 12px rgba(79, 70, 229, 0.2)' : 'none',
+                border: category === c ? '1px solid #D4AF37' : '1px solid rgba(212, 175, 55, 0.15)',
+                background: category === c ? 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)' : '#111111',
+                color: category === c ? '#050505' : '#B8B8B8',
+                boxShadow: category === c ? '0 4px 12px rgba(212, 175, 55, 0.25)' : 'none',
                 cursor: 'pointer'
               }}
             >
@@ -562,36 +670,34 @@ export default function CustomerHome() {
         </div>
 
         {/* View Mode Toggle: List / Map */}
-        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '12px', padding: '3px' }}>
+        <div style={{ display: 'flex', background: '#151515', borderRadius: '12px', padding: '3px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
           <button
             onClick={() => setViewMode('list')}
             style={{
-              padding: '6px 12px', borderRadius: '9px', border: 'none',
-              background: viewMode === 'list' ? '#ffffff' : 'transparent',
-              color: viewMode === 'list' ? '#0f172a' : '#64748b', cursor: 'pointer'
+              padding: '6px 12px', borderRadius: '99px', border: 'none',
+              background: viewMode === 'list' ? '#111111' : 'transparent',
+              color: viewMode === 'list' ? '#D4AF37' : '#777777', cursor: 'pointer'
             }}
           >
-            <List size={16} />
+            <List size={16} color={viewMode === 'list' ? '#D4AF37' : '#777777'} />
           </button>
           <button
             onClick={() => setViewMode('map')}
             style={{
-              padding: '6px 12px', borderRadius: '9px', border: 'none',
-              background: viewMode === 'map' ? '#ffffff' : 'transparent',
-              color: viewMode === 'map' ? '#0f172a' : '#64748b', cursor: 'pointer'
+              padding: '6px 12px', borderRadius: '99px', border: 'none',
+              background: viewMode === 'map' ? '#111111' : 'transparent',
+              color: viewMode === 'map' ? '#D4AF37' : '#777777', cursor: 'pointer'
             }}
           >
-            <Map size={16} />
+            <Map size={16} color={viewMode === 'map' ? '#D4AF37' : '#777777'} />
           </button>
         </div>
       </div>
 
-      {/* Radius Filter — only meaningful once real location is shared. Changing
-          it re-runs fetchShops (distanceFilter is an effect dep), so the shop
-          list genuinely changes with the selected radius. */}
+      {/* Radius Filter */}
       {locationStatus === 'granted' && (
         <div style={{ marginBottom: '16px' }}>
-          <span style={{ fontSize: '12px', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '8px' }}>{t('radiusLabel')}</span>
+          <span style={{ fontSize: '12px', fontWeight: 800, color: '#B8B8B8', display: 'block', marginBottom: '8px' }}>{t('radiusLabel')}</span>
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
             {['1', '3', '5', '10', '25', '50', 'all'].map(r => (
               <button
@@ -603,10 +709,10 @@ export default function CustomerHome() {
                   fontSize: '12px',
                   fontWeight: 700,
                   whiteSpace: 'nowrap',
-                  border: 'none',
-                  background: distanceFilter === r ? '#059669' : '#ffffff',
-                  color: distanceFilter === r ? '#ffffff' : '#64748b',
-                  boxShadow: distanceFilter === r ? '0 4px 12px rgba(5, 150, 105, 0.2)' : 'none',
+                  border: distanceFilter === r ? '1px solid #D4AF37' : '1px solid rgba(212, 175, 55, 0.15)',
+                  background: distanceFilter === r ? '#111111' : '#151515',
+                  color: distanceFilter === r ? '#F2D675' : '#B8B8B8',
+                  boxShadow: distanceFilter === r ? '0 4px 12px rgba(212, 175, 55, 0.2)' : 'none',
                   cursor: 'pointer'
                 }}
               >
@@ -632,42 +738,43 @@ export default function CustomerHome() {
         /* Shops & Offers List */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {shops.length === 0 && !loading && (
-            <div style={{ textAlign: 'center', padding: '32px 16px', color: '#64748b', background: '#ffffff', borderRadius: '20px', border: '1px dashed #cbd5e1', fontSize: '13px', fontWeight: 600 }}>
+            <div style={{ textAlign: 'center', padding: '32px 16px', color: '#B8B8B8', background: '#111111', borderRadius: '20px', border: '1px dashed rgba(212, 175, 55, 0.3)', fontSize: '13px', fontWeight: 600 }}>
               {t('noNearbyShops')}
             </div>
           )}
           {shops.map(shop => (
-            <div key={shop.id} style={{ background: '#ffffff', borderRadius: '20px', padding: '16px', border: '1px solid #e2e8f0', display: 'flex', gap: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
+            <div key={shop.id} style={{ background: '#111111', borderRadius: '20px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)', display: 'flex', gap: '16px', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
               <img src={shop.image_url} alt={shop.name} style={{ width: '90px', height: '90px', borderRadius: '14px', objectFit: 'cover' }} />
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase' }}>{shop.category}</span>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#D4AF37', textTransform: 'uppercase' }}>{shop.category}</span>
                   {shop.distance_km != null && (
-                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '8px', whiteSpace: 'nowrap' }}>
-                      {shop.distance_km} {t('kmAway')}
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#F2D675', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', padding: '3px 8px', borderRadius: '8px', whiteSpace: 'nowrap' }}>
+                      📍 {shop.distance_km} {t('kmAway')}
                     </span>
                   )}
                 </div>
-                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', margin: '2px 0' }}>{shop.name}</h3>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '8px' }}>📍 {shop.address}</span>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF', margin: '2px 0' }}>{shop.name}</h3>
+                <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', marginBottom: '8px' }}>📍 {shop.address}</span>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button onClick={() => navigate('/customer/rewards')} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px' }}>
-                    {t('viewOffers')} <ChevronRight size={14} />
+                  <button onClick={() => navigate('/customer/rewards')} className="btn-primary" style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px' }}>
+                    {t('viewOffers')} <ChevronRight size={14} color="#050505" />
                   </button>
                   <button
                     onClick={() => startChat(shop.id)}
                     disabled={startingChatShopId === shop.id}
-                    style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px', border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: startingChatShopId === shop.id ? 'wait' : 'pointer' }}
+                    className="btn-secondary"
+                    style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px', cursor: startingChatShopId === shop.id ? 'wait' : 'pointer' }}
                   >
-                    <MessageCircle size={14} /> {t('chatWithMerchant')}
+                    <MessageCircle size={14} color="#D4AF37" /> {t('chatWithMerchant')}
                   </button>
                   {shop.latitude != null && shop.longitude != null && (
                     <button
                       onClick={() => handleGetDirections(shop)}
-                      style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px', border: '1px solid #a7f3d0', background: '#f0fdf4', color: '#15803d', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}
+                      style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '8px', border: '1px solid rgba(212, 175, 55, 0.3)', background: '#151515', color: '#F2D675', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}
                     >
-                      <Navigation size={14} /> {t('getDirections')}
+                      <Navigation size={14} color="#F2D675" /> ↗ {t('getDirections')}
                     </button>
                   )}
                 </div>
@@ -680,8 +787,9 @@ export default function CustomerHome() {
       {/* SIMULATED DEMO AD REWARD MODAL */}
       {isAdModalOpen && (
         <SimulatedAdModal
+          isOpen={isAdModalOpen}
           onClose={() => setIsAdModalOpen(false)}
-          onAdComplete={handleAdWatchComplete}
+          onAdCompleted={handleWatchSessionAd}
         />
       )}
     </div>

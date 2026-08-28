@@ -63,49 +63,50 @@ export default function CustomerRewards() {
   const discountCapPercent = levelInfo ? levelInfo.discountCapPercent : 5;
 
   return (
-    <div style={{ padding: '20px', maxWidth: '700px', margin: '0 auto' }}>
+    <div style={{ padding: '20px', maxWidth: '700px', margin: '0 auto', background: '#050505' }}>
       {/* Header & Level Summary */}
       <div style={{ marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '22px', color: '#0f172a', marginBottom: '4px', fontWeight: 800 }}>
+        <h2 style={{ fontSize: '22px', color: '#FFFFFF', marginBottom: '4px', fontWeight: 800 }}>
           Merchant Offers & Discounts
         </h2>
-        <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
+        <p style={{ fontSize: '13px', color: '#B8B8B8', margin: 0 }}>
           Visit partner stores, present your QR code, and redeem available coins for instant savings!
         </p>
       </div>
 
       {/* Customer Status Summary Bar */}
       <div style={{
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+        background: '#111111',
+        border: '1px solid rgba(212, 175, 55, 0.25)',
         borderRadius: '20px',
         padding: '16px 20px',
-        color: '#ffffff',
+        color: '#FFFFFF',
         marginBottom: '20px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        boxShadow: '0 8px 20px rgba(15,23,42,0.15)'
+        boxShadow: '0 8px 30px rgba(0,0,0,0.35)'
       }}>
         <div>
-          <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', display: 'block' }}>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', display: 'block' }}>
             YOUR MEMBERSHIP TIER
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-            <span style={{ fontSize: '16px', fontWeight: 800, color: '#f59e0b' }}>🏆 {currentLevel} MEMBER</span>
-            <span style={{ fontSize: '12px', background: '#334155', padding: '2px 8px', borderRadius: '6px', color: '#10b981', fontWeight: 700 }}>
+            <span style={{ fontSize: '16px', fontWeight: 800, color: '#F2D675' }}>🏆 {currentLevel} MEMBER</span>
+            <span style={{ fontSize: '12px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', padding: '2px 8px', borderRadius: '6px', color: '#D4AF37', fontWeight: 700 }}>
               Up to {discountCapPercent}% Max Cap
             </span>
           </div>
         </div>
 
         <div style={{ textAlign: 'right' }}>
-          <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', display: 'block' }}>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', display: 'block' }}>
             AVAILABLE COINS
           </span>
-          <span style={{ fontSize: '20px', fontWeight: 800, color: '#a7f3d0' }}>
+          <span style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675' }}>
             🪙 {availableCoins.toLocaleString()}
           </span>
-          <span style={{ fontSize: '11px', color: '#cbd5e1', display: 'block' }}>
+          <span style={{ fontSize: '11px', color: '#D4AF37', display: 'block' }}>
             (₹{availableCoins.toLocaleString()} Value)
           </span>
         </div>
@@ -120,14 +121,14 @@ export default function CustomerRewards() {
             style={{
               padding: '8px 16px',
               borderRadius: '99px',
-              border: 'none',
+              border: selectedCategory === cat ? '1px solid #D4AF37' : '1px solid rgba(212, 175, 55, 0.15)',
               fontSize: '12px',
               fontWeight: 700,
               whiteSpace: 'nowrap',
               cursor: 'pointer',
-              background: selectedCategory === cat ? '#4f46e5' : '#ffffff',
-              color: selectedCategory === cat ? '#ffffff' : '#64748b',
-              boxShadow: selectedCategory === cat ? '0 4px 12px rgba(79, 70, 229, 0.2)' : 'none'
+              background: selectedCategory === cat ? 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)' : '#111111',
+              color: selectedCategory === cat ? '#050505' : '#B8B8B8',
+              boxShadow: selectedCategory === cat ? '0 4px 12px rgba(212, 175, 55, 0.25)' : 'none'
             }}
           >
             {cat}
@@ -141,11 +142,11 @@ export default function CustomerRewards() {
           <div
             key={offer.id}
             style={{
-              background: '#ffffff',
+              background: '#111111',
               borderRadius: '20px',
               overflow: 'hidden',
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 4px 15px rgba(0,0,0,0.03)'
+              border: '1px solid rgba(212, 175, 55, 0.15)',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.35)'
             }}
           >
             <div style={{ position: 'relative', height: '130px' }}>
@@ -157,7 +158,7 @@ export default function CustomerRewards() {
               <div style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'linear-gradient(to top, rgba(15,23,42,0.85) 0%, transparent 60%)'
+                background: 'linear-gradient(to top, #111111 0%, transparent 70%)'
               }} />
 
               {/* Promotional Discount Badge */}
@@ -165,32 +166,32 @@ export default function CustomerRewards() {
                 position: 'absolute',
                 top: '12px',
                 right: '12px',
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                color: 'white',
+                background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
+                color: '#050505',
                 fontWeight: 800,
                 fontSize: '14px',
                 padding: '6px 14px',
                 borderRadius: '99px',
-                boxShadow: '0 4px 10px rgba(16, 185, 129, 0.3)'
+                boxShadow: '0 4px 12px rgba(212, 175, 55, 0.3)'
               }}>
                 {offer.discount_percent}% OFF
               </div>
 
-              <div style={{ position: 'absolute', bottom: '12px', left: '16px', color: 'white' }}>
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#c7d2fe', fontWeight: 800 }}>
+              <div style={{ position: 'absolute', bottom: '12px', left: '16px', color: '#FFFFFF' }}>
+                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D4AF37', fontWeight: 800 }}>
                   {offer.shop_category}
                 </span>
-                <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '2px 0 0 0' }}>{offer.shop_name}</h3>
+                <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '2px 0 0 0', color: '#FFFFFF' }}>{offer.shop_name}</h3>
               </div>
             </div>
 
             <div style={{ padding: '18px' }}>
-              <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', marginBottom: '6px' }}>
+              <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF', marginBottom: '6px' }}>
                 {offer.title}
               </h4>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '12px', color: '#64748b', marginBottom: '14px' }}>
-                <span>Maximum Discount: <strong style={{ color: '#0f172a' }}>₹{offer.max_discount_inr}</strong></span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '12px', color: '#B8B8B8', marginBottom: '14px' }}>
+                <span>Maximum Discount: <strong style={{ color: '#F2D675' }}>₹{offer.max_discount_inr}</strong></span>
                 <span>•</span>
                 <span>Valid until: <strong>{new Date(offer.valid_until).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
               </div>
@@ -200,11 +201,11 @@ export default function CustomerRewards() {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 paddingTop: '14px',
-                borderTop: '1px solid #f1f5f9'
+                borderTop: '1px solid rgba(212, 175, 55, 0.15)'
               }}>
                 <div>
-                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block', fontWeight: 700 }}>YOUR AVAILABLE COINS</span>
-                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#4f46e5' }}>
+                  <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', fontWeight: 700 }}>YOUR AVAILABLE COINS</span>
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#F2D675' }}>
                     🪙 {availableCoins.toLocaleString()} Coins (₹{availableCoins.toLocaleString()})
                   </span>
                 </div>
@@ -215,7 +216,7 @@ export default function CustomerRewards() {
                   className="btn-primary"
                   style={{ padding: '10px 18px', fontSize: '13px', borderRadius: '12px' }}
                 >
-                  View Offer Details <ChevronRight size={16} />
+                  View Offer Details <ChevronRight size={16} color="#050505" />
                 </button>
               </div>
             </div>
@@ -226,48 +227,48 @@ export default function CustomerRewards() {
       {/* OFFER DETAILS MODAL */}
       {selectedOffer && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', zIndex: 1000,
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)', zIndex: 1000,
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
         }}>
-          <div style={{ background: '#ffffff', borderRadius: '24px', maxWidth: '440px', width: '100%', padding: '24px' }} className="animate-slide-up">
+          <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '24px', maxWidth: '440px', width: '100%', padding: '24px' }} className="animate-slide-up">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Store size={20} color="#4f46e5" />
-                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{selectedOffer.shop_name}</h3>
+                <Store size={20} color="#D4AF37" />
+                <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>{selectedOffer.shop_name}</h3>
               </div>
               <button type="button" onClick={() => setSelectedOffer(null)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
-                <X size={20} color="#64748b" />
+                <X size={20} color="#B8B8B8" />
               </button>
             </div>
 
-            <div style={{ background: 'linear-gradient(135deg, #ecfdf5 0%, #dcfce7 100%)', border: '1px solid #a7f3d0', borderRadius: '16px', padding: '16px', marginBottom: '16px' }}>
-              <span style={{ fontSize: '11px', color: '#059669', fontWeight: 800, textTransform: 'uppercase' }}>{selectedOffer.shop_category}</span>
-              <h4 style={{ fontSize: '17px', fontWeight: 800, color: '#065f46', margin: '4px 0' }}>
+            <div style={{ background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '16px', padding: '16px', marginBottom: '16px' }}>
+              <span style={{ fontSize: '11px', color: '#D4AF37', fontWeight: 800, textTransform: 'uppercase' }}>{selectedOffer.shop_category}</span>
+              <h4 style={{ fontSize: '17px', fontWeight: 800, color: '#F2D675', margin: '4px 0' }}>
                 {selectedOffer.discount_percent}% OFF — {selectedOffer.title}
               </h4>
-              <span style={{ fontSize: '13px', color: '#047857', fontWeight: 700 }}>
+              <span style={{ fontSize: '13px', color: '#FFFFFF', fontWeight: 700 }}>
                 Maximum Discount: ₹{selectedOffer.max_discount_inr} • Valid until {new Date(selectedOffer.valid_until).toLocaleDateString()}
               </span>
             </div>
 
             {/* Contextual Calculation Breakdown */}
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
+            <div style={{ background: '#151515', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '16px', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Your Membership Tier:</span>
-                <span style={{ fontWeight: 800, color: '#f59e0b' }}>🏆 {currentLevel}</span>
+                <span style={{ color: '#B8B8B8' }}>Your Membership Tier:</span>
+                <span style={{ fontWeight: 800, color: '#F2D675' }}>🏆 {currentLevel}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Level Maximum Discount Cap:</span>
-                <span style={{ fontWeight: 800, color: '#10b981' }}>Up to {discountCapPercent}% Max</span>
+                <span style={{ color: '#B8B8B8' }}>Level Maximum Discount Cap:</span>
+                <span style={{ fontWeight: 800, color: '#D4AF37' }}>Up to {discountCapPercent}% Max</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Your Available Coins:</span>
-                <span style={{ fontWeight: 800, color: '#4f46e5' }}>🪙 {availableCoins} (₹{availableCoins} Value)</span>
+                <span style={{ color: '#B8B8B8' }}>Your Available Coins:</span>
+                <span style={{ fontWeight: 800, color: '#F2D675' }}>🪙 {availableCoins} (₹{availableCoins} Value)</span>
               </div>
 
-              <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', fontSize: '12px', color: '#475569', lineHeight: 1.4 }}>
+              <div style={{ borderTop: '1px dashed rgba(212, 175, 55, 0.2)', paddingTop: '8px', fontSize: '12px', color: '#B8B8B8', lineHeight: 1.4 }}>
                 💡 <strong>How it works at store checkout:</strong> When you present your Customer QR code, the merchant generates your itemized bill. The system automatically applies the offer discount (up to your {discountCapPercent}% level cap) using your available coins!
               </div>
             </div>
@@ -279,7 +280,7 @@ export default function CustomerRewards() {
                 className="btn-primary"
                 style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}
               >
-                <QrCode size={18} /> Show Customer QR to Merchant
+                <QrCode size={18} color="#050505" /> Show Customer QR to Merchant
               </button>
 
               <button

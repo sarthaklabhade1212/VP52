@@ -175,17 +175,36 @@ router.get('/wallet', (req, res) => {
   }
 });
 
-// 2. Watch Simulated Ad & Earn Points
+// 2. Watch Simulated Ad & Earn Points (Calculated from watch duration seconds)
 router.post('/watch-ad', (req, res) => {
   try {
     const userId = req.user.id;
-    const pointsConfigured = parseInt(getSetting('points_per_ad', '100'), 10);
+    const adDurationSec = parseInt(getRewardSetting('ad_duration_seconds', '10'), 10);
+    const pointsPerAdConfig = parseInt(getRewardSetting('points_per_ad', '100'), 10);
+    const pointsPerSecond = pointsPerAdConfig / Math.max(1, adDurationSec);
+
+    // Watch duration in seconds sent by client (clamped between 0 and adDurationSec)
+    const rawWatchSeconds = req.body ? req.body.watch_duration_seconds : undefined;
+    const watchDurationSeconds = (rawWatchSeconds !== undefined && rawWatchSeconds !== null && !isNaN(parseInt(rawWatchSeconds, 10)))
+      ? Math.min(adDurationSec, Math.max(0, parseInt(rawWatchSeconds, 10)))
+      : adDurationSec;
+
+    const pointsAwarded = Math.min(pointsPerAdConfig, Math.floor(watchDurationSeconds * pointsPerSecond));
+
+    if (pointsAwarded <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Watch duration too short to earn points.'
+      });
+    }
+
+    console.log(`[Ads] Customer ${userId} watch-ad request: watched ${watchDurationSeconds}/${adDurationSec}s -> Awarding ${pointsAwarded} points.`);
 
     // Atomic transaction for awarding points + point_ledger
     const rewardTx = db.transaction(() => {
       const walletBefore = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0 };
       const prevBal = walletBefore.balance;
-      const newBal = prevBal + pointsConfigured;
+      const newBal = prevBal + pointsAwarded;
 
       db.prepare(`
         UPDATE wallets
@@ -193,32 +212,33 @@ router.post('/watch-ad', (req, res) => {
             total_earned = total_earned + ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
-      `).run(newBal, pointsConfigured, userId);
+      `).run(newBal, pointsAwarded, userId);
 
       const result = db.prepare(`
         INSERT INTO reward_transactions (user_id, activity_type, points)
         VALUES (?, 'Sponsored Content Reward', ?)
-      `).run(userId, pointsConfigured);
+      `).run(userId, pointsAwarded);
 
       const txId = `AD-REWARD-${result.lastInsertRowid}`;
 
       // Insert into point_ledger
       db.prepare(`
         INSERT INTO point_ledger (user_id, transaction_id, type, points, previous_balance, new_balance, reason)
-        VALUES (?, ?, 'AD_REWARD', ?, ?, ?, 'Demo / Simulated Advertisement Watch Reward')
-      `).run(userId, txId, pointsConfigured, prevBal, newBal);
+        VALUES (?, ?, 'AD_REWARD', ?, ?, ?, ?)
+      `).run(userId, txId, pointsAwarded, prevBal, newBal, `Simulated Ad Watch (${watchDurationSeconds}s watched)`);
 
       const freshWallet = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId);
 
       return {
         transactionId: result.lastInsertRowid,
-        pointsAwarded: pointsConfigured,
+        pointsAwarded: pointsAwarded,
         newBalance: freshWallet.balance,
         totalEarned: freshWallet.total_earned
       };
     });
 
     const result = rewardTx();
+    console.log(`[Ads] Reward successfully credited for Customer ${userId}: +${result.pointsAwarded} points.`);
 
     return res.json({
       success: true,
@@ -470,7 +490,336 @@ router.get('/redemptions', (req, res) => {
   }
 });
 
-// 6. SERVER-CONTROLLED 6-HOUR REWARD SESSION API
+// ============================================================
+// VP52 6-HOUR COIN SESSION SYSTEM API
+// ============================================================
+
+const GET_TEST_SESSION_DURATION = () => {
+  if (process.env.TEST_SESSION_DURATION_SECONDS) {
+    const parsed = parseInt(process.env.TEST_SESSION_DURATION_SECONDS, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 21600; // 6 hours = 21,600 seconds
+};
+
+// GET /api/customer/coin-session — Status & timestamp-based live progress
+router.get('/coin-session', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const now = Date.now();
+    const DURATION_SECONDS = GET_TEST_SESSION_DURATION();
+
+    // 1. Check for active session
+    const activeSession = db.prepare(`
+      SELECT * FROM vp52_coin_sessions
+      WHERE user_id = ? AND status = 'active'
+      ORDER BY id DESC LIMIT 1
+    `).get(userId);
+
+    if (activeSession) {
+      const startedMs = new Date(activeSession.started_at).getTime();
+      const expiresMs = new Date(activeSession.expires_at).getTime();
+      const durationSec = activeSession.duration_seconds || DURATION_SECONDS;
+      const elapsedSec = Math.max(0, (now - startedMs) / 1000);
+      const remainingSec = Math.max(0, Math.ceil((expiresMs - now) / 1000));
+      const coinsEarned = Math.min(100.0, Math.max(0.0, (elapsedSec / durationSec) * 100.0));
+      const isExpired = remainingSec <= 0 || now >= expiresMs;
+
+      return res.json({
+        success: true,
+        session_state: isExpired ? 'COMPLETED_PENDING_CLAIM' : 'ACTIVE',
+        session: {
+          id: activeSession.id,
+          status: isExpired ? 'completed_pending_claim' : 'active',
+          ads_completed: activeSession.ads_completed || 3,
+          started_at: activeSession.started_at,
+          expires_at: activeSession.expires_at,
+          duration_seconds: durationSec,
+          remaining_seconds: remainingSec,
+          coins_earned: coinsEarned,
+          reward_claimed: activeSession.reward_claimed || 0,
+          is_expired: isExpired
+        }
+      });
+    }
+
+    // 2. Check for completed session pending reward claim
+    const completedPending = db.prepare(`
+      SELECT * FROM vp52_coin_sessions
+      WHERE user_id = ? AND status = 'completed' AND reward_claimed = 0
+      ORDER BY id DESC LIMIT 1
+    `).get(userId);
+
+    if (completedPending) {
+      return res.json({
+        success: true,
+        session_state: 'COMPLETED_PENDING_CLAIM',
+        session: {
+          id: completedPending.id,
+          status: 'completed_pending_claim',
+          ads_completed: 3,
+          coins_earned: 100.0,
+          reward_claimed: 0,
+          is_expired: true,
+          remaining_seconds: 0
+        }
+      });
+    }
+
+    // 3. Check for pending session (ads in progress or ready to start)
+    const pendingSession = db.prepare(`
+      SELECT * FROM vp52_coin_sessions
+      WHERE user_id = ? AND status IN ('pending_ads', 'ready_to_start')
+      ORDER BY id DESC LIMIT 1
+    `).get(userId);
+
+    if (pendingSession) {
+      return res.json({
+        success: true,
+        session_state: pendingSession.ads_completed >= 3 ? 'READY_TO_START' : 'ADS_IN_PROGRESS',
+        session: {
+          id: pendingSession.id,
+          status: pendingSession.status,
+          ads_completed: pendingSession.ads_completed,
+          can_start: pendingSession.ads_completed >= 3
+        }
+      });
+    }
+
+    // 4. Default: No session
+    return res.json({
+      success: true,
+      session_state: 'NO_SESSION',
+      session: {
+        ads_completed: 0,
+        can_start: false,
+        status: 'no_session'
+      }
+    });
+  } catch (error) {
+    console.error('Fetch VP52 coin session error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch coin session' });
+  }
+});
+
+// POST /api/customer/coin-session/ad-complete — Increment ad completion (0/3 -> 1/3 -> 2/3 -> 3/3)
+router.post('/coin-session/ad-complete', (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Check if active session already running
+    const active = db.prepare(`
+      SELECT id FROM vp52_coin_sessions
+      WHERE user_id = ? AND status = 'active' AND datetime(expires_at) > datetime('now')
+    `).get(userId);
+
+    if (active) {
+      return res.status(400).json({ success: false, error: 'A 6-hour earning session is currently active.' });
+    }
+
+    let session = db.prepare(`
+      SELECT * FROM vp52_coin_sessions
+      WHERE user_id = ? AND status IN ('pending_ads', 'ready_to_start')
+      ORDER BY id DESC LIMIT 1
+    `).get(userId);
+
+    if (!session) {
+      const resIns = db.prepare(`
+        INSERT INTO vp52_coin_sessions (user_id, ads_completed, status)
+        VALUES (?, 1, 'pending_ads')
+      `).run(userId);
+      session = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(resIns.lastInsertRowid);
+    } else {
+      const newCount = Math.min(3, (session.ads_completed || 0) + 1);
+      const newStatus = newCount >= 3 ? 'ready_to_start' : 'pending_ads';
+      db.prepare(`
+        UPDATE vp52_coin_sessions
+        SET ads_completed = ?, status = ?
+        WHERE id = ?
+      `).run(newCount, newStatus, session.id);
+      session.ads_completed = newCount;
+      session.status = newStatus;
+    }
+
+    return res.json({
+      success: true,
+      ads_completed: session.ads_completed,
+      can_start: session.ads_completed >= 3,
+      message: session.ads_completed >= 3
+        ? 'All 3 ads completed! Click "Start 6-Hour Session" to begin.'
+        : `Ad ${session.ads_completed}/3 completed successfully!`
+    });
+  } catch (error) {
+    console.error('Ad completion error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to record ad completion' });
+  }
+});
+
+// POST /api/customer/coin-session/start — Start 6-Hour Session after 3 ads completed
+router.post('/coin-session/start', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const now = Date.now();
+    const DURATION_SECONDS = GET_TEST_SESSION_DURATION();
+
+    // Duplicate session protection: check if active session exists
+    const existingActive = db.prepare(`
+      SELECT * FROM vp52_coin_sessions
+      WHERE user_id = ? AND status = 'active'
+    `).get(userId);
+
+    if (existingActive) {
+      const expiresMs = new Date(existingActive.expires_at).getTime();
+      if (now < expiresMs) {
+        return res.json({
+          success: true,
+          message: 'Existing active session returned',
+          session: existingActive
+        });
+      }
+    }
+
+    // Fetch pending session with at least 3 ads completed
+    let pending = db.prepare(`
+      SELECT * FROM vp52_coin_sessions
+      WHERE user_id = ? AND status IN ('ready_to_start', 'pending_ads') AND ads_completed >= 3
+      ORDER BY id DESC LIMIT 1
+    `).get(userId);
+
+    if (!pending) {
+      return res.status(400).json({
+        success: false,
+        error: 'You must complete 3 advertisements before starting a 6-Hour Earning Session.'
+      });
+    }
+
+    const durationSec = DURATION_SECONDS;
+    const startTime = new Date(now).toISOString();
+    const endTime = new Date(now + durationSec * 1000).toISOString();
+
+    db.prepare(`
+      UPDATE vp52_coin_sessions
+      SET started_at = ?, expires_at = ?, duration_seconds = ?, status = 'active', coins_earned = 0, reward_claimed = 0
+      WHERE id = ?
+    `).run(startTime, endTime, durationSec, pending.id);
+
+    const startedSession = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(pending.id);
+
+    return res.json({
+      success: true,
+      message: '6-Hour Earning Session started! Earning 100 VP52 Coins.',
+      session: {
+        id: startedSession.id,
+        started_at: startTime,
+        expires_at: endTime,
+        duration_seconds: durationSec,
+        remaining_seconds: durationSec,
+        coins_earned: 0,
+        status: 'active'
+      }
+    });
+  } catch (error) {
+    console.error('Start coin session error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to start coin session' });
+  }
+});
+
+// POST /api/customer/coin-session/complete — Finalize 6-Hour Session and credit 100 coins (Idempotent)
+router.post('/coin-session/complete', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const now = Date.now();
+
+    const session = db.prepare(`
+      SELECT * FROM vp52_coin_sessions
+      WHERE user_id = ?
+      ORDER BY id DESC LIMIT 1
+    `).get(userId);
+
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'No coin session found' });
+    }
+
+    // Idempotent protection: check if 100 coins already claimed
+    if (session.reward_claimed === 1) {
+      const wallet = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId);
+      return res.json({
+        success: true,
+        already_claimed: true,
+        message: '100 VP52 Coins were already credited to your wallet!',
+        coins_awarded: 100,
+        newBalance: wallet ? wallet.balance : 0
+      });
+    }
+
+    // Verify session time has elapsed
+    const expiresMs = new Date(session.expires_at || Date.now()).getTime();
+    if (now < expiresMs && session.status === 'active') {
+      return res.status(400).json({
+        success: false,
+        error: 'Session is still in progress. Please wait until the session duration completes.'
+      });
+    }
+
+    // Atomic Completion Transaction: Credit 100 coins to coin_lots, wallets, transactions, ledger
+    const completeTx = db.transaction(() => {
+      db.prepare(`
+        UPDATE vp52_coin_sessions
+        SET status = 'completed', completed_at = CURRENT_TIMESTAMP, reward_claimed = 1, coins_earned = 100
+        WHERE id = ? AND reward_claimed = 0
+      `).run(session.id);
+
+      const txId = `VP52-SESSION-${session.id}`;
+      const expiresAt = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
+
+      db.prepare(`
+        INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, expires_at, status)
+        VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, ?, 'ACTIVE')
+      `).run(userId, txId, expiresAt);
+
+      const walletBefore = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0 };
+      const prevBal = walletBefore.balance;
+      const newBal = prevBal + 100;
+      const newLifetime = walletBefore.total_earned + 100;
+
+      db.prepare(`
+        UPDATE wallets
+        SET balance = ?, total_earned = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+      `).run(newBal, newLifetime, userId);
+
+      db.prepare(`
+        INSERT INTO reward_transactions (user_id, activity_type, points)
+        VALUES (?, 'VP52 6-Hour Session Completion', 100)
+      `).run(userId);
+
+      db.prepare(`
+        INSERT INTO point_ledger (user_id, transaction_id, type, points, previous_balance, new_balance, reason)
+        VALUES (?, ?, 'AD_REWARD', 100, ?, ?, 'Completed VP52 6-Hour Earning Session (100 Coins)')
+      `).run(userId, txId, prevBal, newBal);
+
+      return {
+        newBalance: newBal,
+        totalEarned: newLifetime
+      };
+    });
+
+    const result = completeTx();
+
+    return res.json({
+      success: true,
+      message: '🎉 Congratulations! 100 VP52 Coins Credited to your Wallet!',
+      coins_awarded: 100,
+      newBalance: result.newBalance,
+      totalEarned: result.totalEarned
+    });
+  } catch (error) {
+    console.error('Complete coin session error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to complete session' });
+  }
+});
+
+// 6. SERVER-CONTROLLED 6-HOUR REWARD SESSION API (Legacy Fallback)
 router.get('/reward-session/status', (req, res) => {
   try {
     const userId = req.user.id;

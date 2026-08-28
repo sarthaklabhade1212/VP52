@@ -2,16 +2,9 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { APP_NAME } from '../../config/brand';
-import { Store, Lock, ShieldCheck, ArrowRight, LogOut } from 'lucide-react';
+import { Lock, ArrowRight, LogOut } from 'lucide-react';
+import vp52Logo from '../../assets/vp52-logo.png';
 
-// Forced first-login (and voluntary) merchant password change.
-//
-// Reached when a merchant logs in with an admin-issued temporary password
-// (must_change_password = 1). The merchant cannot reach the dashboard until this
-// completes (enforced by ShopLayout's redirect gate + the server flag). On success
-// we update the cached user (must_change_password = 0) and hard-navigate to the
-// dashboard, matching the existing ShopLogin session pattern (re-inits AuthContext
-// from localStorage, then /me confirms the cleared flag — no context race).
 export default function ShopChangePassword() {
   const { user, logout } = useAuth();
   const { t } = useI18n();
@@ -31,7 +24,6 @@ export default function ShopChangePassword() {
     e.preventDefault();
     setError(null);
 
-    // Client-side pre-checks mirror the server policy (which stays authoritative).
     if (newPassword !== confirmPassword) {
       return setError(t('pwMismatch'));
     }
@@ -59,12 +51,11 @@ export default function ShopChangePassword() {
         throw new Error(data.error || t('pwChangeFailed'));
       }
 
-      // Clear the cached flag so the dashboard gate lets the merchant through.
       try {
         const saved = JSON.parse(localStorage.getItem('rewards_user') || '{}');
         saved.must_change_password = 0;
         localStorage.setItem('rewards_user', JSON.stringify(saved));
-      } catch (_) { /* non-fatal: /me will re-sync */ }
+      } catch (_) {}
 
       window.location.href = '/shop/dashboard';
     } catch (err) {
@@ -76,51 +67,57 @@ export default function ShopChangePassword() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #064e3b 0%, #0f172a 100%)',
+      background: 'radial-gradient(circle at 50% 30%, rgba(212, 175, 55, 0.12) 0%, #050505 70%)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '24px'
     }}>
       <div style={{
-        background: '#ffffff',
+        background: '#111111',
+        border: '1px solid rgba(212, 175, 55, 0.25)',
         borderRadius: '24px',
         maxWidth: '440px',
         width: '100%',
         padding: '32px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div style={{
-            width: '56px', height: '56px', borderRadius: '16px',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', marginBottom: '12px', boxShadow: '0 8px 20px rgba(16, 185, 129, 0.3)'
-          }}>
-            <ShieldCheck size={30} />
-          </div>
-          <div style={{ fontSize: '13px', fontWeight: 800, color: '#059669', letterSpacing: '0.5px', marginBottom: '2px' }}>{APP_NAME}</div>
-          <h2 style={{ fontSize: '22px', color: '#0f172a', marginBottom: '4px', fontWeight: 800 }}>{t('setNewPasswordTitle')}</h2>
-          <p style={{ fontSize: '13px', color: '#64748b' }}>
+          <img
+            src={vp52Logo}
+            alt="VP52 Logo"
+            draggable="false"
+            style={{
+              width: '76px',
+              height: 'auto',
+              maxHeight: '76px',
+              objectFit: 'contain',
+              display: 'inline-block',
+              marginBottom: '12px'
+            }}
+          />
+          <div style={{ fontSize: '13px', fontWeight: 800, color: '#D4AF37', letterSpacing: '0.5px', marginBottom: '2px' }}>{APP_NAME}</div>
+          <h2 style={{ fontSize: '22px', color: '#FFFFFF', marginBottom: '4px', fontWeight: 800 }}>{t('setNewPasswordTitle')}</h2>
+          <p style={{ fontSize: '13px', color: '#B8B8B8' }}>
             {user ? (user.shop_name || user.full_name) : t('shopMerchantFallback')}
           </p>
         </div>
 
-        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', padding: '12px', borderRadius: '12px', fontSize: '12.5px', marginBottom: '16px', lineHeight: 1.5 }}>
+        <div style={{ background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '12px', borderRadius: '12px', fontSize: '12.5px', marginBottom: '16px', lineHeight: 1.5 }}>
           {t('firstLoginPwNotice')}
         </div>
 
         {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px', borderRadius: '12px', fontSize: '13px', marginBottom: '16px', textAlign: 'center', fontWeight: 700 }}>
+          <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', padding: '12px', borderRadius: '12px', fontSize: '13px', marginBottom: '16px', textAlign: 'center', fontWeight: 700 }}>
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('temporaryPasswordLabel')}</label>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', marginBottom: '4px', display: 'block' }}>{t('temporaryPasswordLabel')}</label>
             <div style={{ position: 'relative' }}>
-              <Lock size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
+              <Lock size={18} color="#C9A227" style={{ position: 'absolute', left: '14px', top: '16px' }} />
               <input
                 type="password"
                 required
@@ -134,9 +131,9 @@ export default function ShopChangePassword() {
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('newPasswordLabel')}</label>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', marginBottom: '4px', display: 'block' }}>{t('newPasswordLabel')}</label>
             <div style={{ position: 'relative' }}>
-              <Lock size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
+              <Lock size={18} color="#C9A227" style={{ position: 'absolute', left: '14px', top: '16px' }} />
               <input
                 type="password"
                 required
@@ -147,13 +144,13 @@ export default function ShopChangePassword() {
                 onChange={(e) => setNewPassword(e.target.value)}
               />
             </div>
-            <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', display: 'block' }}>{t('pwRequirementHint')}</span>
+            <span style={{ fontSize: '11px', color: '#777777', marginTop: '4px', display: 'block' }}>{t('pwRequirementHint')}</span>
           </div>
 
           <div>
-            <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>{t('confirmNewPasswordLabel')}</label>
+            <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', marginBottom: '4px', display: 'block' }}>{t('confirmNewPasswordLabel')}</label>
             <div style={{ position: 'relative' }}>
-              <Lock size={18} color="#94a3b8" style={{ position: 'absolute', left: '14px', top: '16px' }} />
+              <Lock size={18} color="#C9A227" style={{ position: 'absolute', left: '14px', top: '16px' }} />
               <input
                 type="password"
                 required
@@ -169,20 +166,20 @@ export default function ShopChangePassword() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-success"
+            className="btn-primary"
             style={{ width: '100%', padding: '16px', fontSize: '15px', marginTop: '8px', justifyContent: 'center' }}
           >
             {loading ? t('updatingPassword') : t('updatePasswordContinue')}
-            <ArrowRight size={18} />
+            <ArrowRight size={18} color="#050505" />
           </button>
         </form>
 
-        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
+        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(212, 175, 55, 0.15)', textAlign: 'center' }}>
           <button
             onClick={handleLogout}
-            style={{ background: 'none', border: 'none', color: '#64748b', fontWeight: 700, fontSize: '12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            style={{ background: 'none', border: 'none', color: '#B8B8B8', fontWeight: 700, fontSize: '12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            <LogOut size={14} /> {t('signOutMerchant')}
+            <LogOut size={14} color="#D4AF37" /> {t('signOutMerchant')}
           </button>
         </div>
       </div>

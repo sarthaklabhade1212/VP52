@@ -95,22 +95,22 @@ export default function AdminOffers() {
   };
 
   return (
-    <div style={{ color: '#f8fafc' }}>
+    <div style={{ background: '#050505', color: '#FFFFFF' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '24px', color: '#ffffff', fontWeight: 800 }}>Store Promotional Offers</h2>
-          <p style={{ fontSize: '14px', color: '#cbd5e1', margin: 0 }}>Configure store promotional percentage offers and discount caps (INR ₹).</p>
+          <h2 style={{ fontSize: '24px', color: '#FFFFFF', fontWeight: 800 }}>Store Promotional Offers</h2>
+          <p style={{ fontSize: '14px', color: '#B8B8B8', margin: 0 }}>Configure store promotional percentage offers and discount caps (INR ₹).</p>
         </div>
 
         <button onClick={handleOpenAdd} className="btn-primary" style={{ padding: '12px 20px', borderRadius: '12px' }}>
-          <Plus size={18} /> Create New Offer
+          <Plus size={18} color="#050505" /> Create New Offer
         </button>
       </div>
 
-      <div style={{ background: '#1e293b', borderRadius: '20px', border: '1px solid #334155', overflow: 'hidden' }}>
+      <div style={{ background: '#111111', borderRadius: '20px', border: '1px solid rgba(212, 175, 55, 0.15)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
           <thead>
-            <tr style={{ background: '#0f172a', borderBottom: '1px solid #334155', color: '#94a3b8', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase' }}>
+            <tr style={{ background: '#151515', borderBottom: '1px solid rgba(212, 175, 55, 0.15)', color: '#B8B8B8', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase' }}>
               <th style={{ padding: '14px 20px' }}>Shop</th>
               <th style={{ padding: '14px 20px' }}>Offer Title</th>
               <th style={{ padding: '14px 20px' }}>Discount %</th>
@@ -122,17 +122,17 @@ export default function AdminOffers() {
           </thead>
           <tbody>
             {offers.map((offer) => (
-              <tr key={offer.id} style={{ borderBottom: '1px solid #334155' }}>
-                <td style={{ padding: '14px 20px', fontWeight: 700, color: '#ffffff' }}>{offer.shop_name}</td>
-                <td style={{ padding: '14px 20px', color: '#cbd5e1' }}>{offer.title}</td>
-                <td style={{ padding: '14px 20px', fontWeight: 800, color: '#10b981' }}>{offer.discount_percent}% OFF</td>
-                <td style={{ padding: '14px 20px', fontWeight: 700, color: '#a7f3d0' }}>₹{offer.max_discount_inr}</td>
-                <td style={{ padding: '14px 20px', fontSize: '13px', color: '#cbd5e1' }}>{new Date(offer.valid_until).toLocaleDateString('en-IN')}</td>
+              <tr key={offer.id} style={{ borderBottom: '1px solid rgba(212, 175, 55, 0.1)' }}>
+                <td style={{ padding: '14px 20px', fontWeight: 700, color: '#FFFFFF' }}>{offer.shop_name}</td>
+                <td style={{ padding: '14px 20px', color: '#B8B8B8' }}>{offer.title}</td>
+                <td style={{ padding: '14px 20px', fontWeight: 800, color: '#F2D675' }}>{offer.discount_percent}% OFF</td>
+                <td style={{ padding: '14px 20px', fontWeight: 700, color: '#D4AF37' }}>₹{offer.max_discount_inr}</td>
+                <td style={{ padding: '14px 20px', fontSize: '13px', color: '#B8B8B8' }}>{new Date(offer.valid_until).toLocaleDateString('en-IN')}</td>
                 <td style={{ padding: '14px 20px' }}>
                   <span className={`badge ${offer.status === 'active' ? 'badge-active' : 'badge-used'}`}>{offer.status}</span>
                 </td>
                 <td style={{ padding: '14px 20px', textAlign: 'right' }}>
-                  <button onClick={() => handleDelete(offer.id)} style={{ border: 'none', background: '#7f1d1d', color: '#fca5a5', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
+                  <button onClick={() => handleDelete(offer.id)} style={{ border: '1px solid rgba(239, 68, 68, 0.3)', background: '#151515', color: '#ef4444', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>
                     Delete
                   </button>
                 </td>
@@ -144,43 +144,43 @@ export default function AdminOffers() {
 
       {/* Add Offer Modal */}
       {isModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '24px', maxWidth: '500px', width: '100%', padding: '24px' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '24px', maxWidth: '500px', width: '100%', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '20px', color: '#ffffff', fontWeight: 800 }}>Create New Store Offer</h3>
-              <button onClick={() => setIsModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} color="#94a3b8" /></button>
+              <h3 style={{ fontSize: '20px', color: '#FFFFFF', fontWeight: 800 }}>Create New Store Offer</h3>
+              <button onClick={() => setIsModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} color="#B8B8B8" /></button>
             </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>Select Partner Shop</label>
-                <select className="form-input" style={{ background: '#0f172a', border: '1px solid #334155', color: '#ffffff' }} value={formData.shop_id} onChange={e => setFormData({ ...formData, shop_id: e.target.value })}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Select Partner Shop</label>
+                <select className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={formData.shop_id} onChange={e => setFormData({ ...formData, shop_id: e.target.value })}>
                   {shops.map(s => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>Offer Title</label>
-                <input type="text" required className="form-input" style={{ background: '#0f172a', border: '1px solid #334155', color: '#ffffff' }} value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="10% OFF Total Bill" />
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Offer Title</label>
+                <input type="text" required className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} placeholder="10% OFF Total Bill" />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>Discount (%)</label>
-                  <input type="number" required className="form-input" style={{ background: '#0f172a', border: '1px solid #334155', color: '#10b981', fontWeight: 800 }} value={formData.discount_percent} onChange={e => setFormData({ ...formData, discount_percent: parseInt(e.target.value) })} />
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Discount (%)</label>
+                  <input type="number" required className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#F2D675', fontWeight: 800 }} value={formData.discount_percent} onChange={e => setFormData({ ...formData, discount_percent: parseInt(e.target.value) })} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>Max Discount (₹ INR)</label>
-                  <input type="number" required className="form-input" style={{ background: '#0f172a', border: '1px solid #334155', color: '#ffffff' }} value={formData.max_discount_inr} onChange={e => setFormData({ ...formData, max_discount_inr: parseInt(e.target.value) })} />
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Max Discount (₹ INR)</label>
+                  <input type="number" required className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={formData.max_discount_inr} onChange={e => setFormData({ ...formData, max_discount_inr: parseInt(e.target.value) })} />
                 </div>
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1', display: 'block', marginBottom: '4px' }}>Valid Until Date</label>
-                <input type="date" required className="form-input" style={{ background: '#0f172a', border: '1px solid #334155', color: '#ffffff' }} value={formData.valid_until} onChange={e => setFormData({ ...formData, valid_until: e.target.value })} />
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Valid Until Date</label>
+                <input type="date" required className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={formData.valid_until} onChange={e => setFormData({ ...formData, valid_until: e.target.value })} />
               </div>
 
-              <button type="submit" className="btn-primary" style={{ padding: '14px', fontSize: '15px', marginTop: '10px' }}>
+              <button type="submit" className="btn-primary" style={{ padding: '14px', fontSize: '15px', marginTop: '10px', justifyContent: 'center' }}>
                 Publish Store Offer
               </button>
             </form>

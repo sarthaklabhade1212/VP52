@@ -1,93 +1,127 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useI18n } from '../i18n/I18nContext';
-import LanguageSwitcher from '../components/LanguageSwitcher';
-import { Gift, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
+import vp52Logo from '../assets/vp52-logo.png';
 
 export default function WelcomeScreen() {
   const navigate = useNavigate();
-  const { t } = useI18n();
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px'
-    }}>
-      <div style={{
-        maxWidth: '480px',
-        width: '100%',
-        background: '#ffffff',
-        borderRadius: '28px',
-        padding: '36px 28px',
-        textAlign: 'center',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-        position: 'relative'
-      }}>
-        {/* Language Selection Header Bar */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          marginBottom: '20px'
-        }}>
-          <LanguageSwitcher tone="light" />
-        </div>
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#050505',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '32px 24px',
+        boxSizing: 'border-box',
+        position: 'relative',
+        overflow: 'hidden'
+      }}
+    >
+      <style>{`
+        @keyframes wsLogoIn {
+          from { opacity: 0; transform: scale(0.92); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes wsHeadingIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes wsBtnIn {
+          from { opacity: 0; transform: translateY(14px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .ws-logo-anim {
+          animation: wsLogoIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        .ws-heading-anim {
+          opacity: 0;
+          animation: wsHeadingIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.25s forwards;
+        }
+        .ws-btn-anim {
+          opacity: 0;
+          animation: wsBtnIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+        }
+        .ws-btn-active:active {
+          transform: scale(0.98);
+          filter: brightness(0.92);
+        }
+      `}</style>
 
-        {/* App Logo */}
-        <div style={{
-          width: '72px',
-          height: '72px',
-          borderRadius: '24px',
-          background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-          display: 'inline-flex',
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          color: 'white',
-          boxShadow: '0 12px 30px rgba(79, 70, 229, 0.4)',
-          marginBottom: '20px'
-        }}>
-          <Gift size={38} />
+          width: '100%',
+          maxWidth: '420px',
+          margin: 'auto 0'
+        }}
+      >
+        {/* 1. VP52 Logo */}
+        <div className="ws-logo-anim" style={{ marginBottom: '40px', textAlign: 'center' }}>
+          <img
+            src={vp52Logo}
+            alt="VP52"
+            draggable="false"
+            style={{
+              width: '120px',
+              height: 'auto',
+              maxHeight: '120px',
+              objectFit: 'contain',
+              display: 'block',
+              margin: '0 auto'
+            }}
+          />
         </div>
 
-        <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
-          {t('welcomeTitle')}
+        {/* 2. Welcome to VP52 Heading */}
+        <h1
+          className="ws-heading-anim"
+          style={{
+            fontSize: '26px',
+            fontWeight: 700,
+            color: '#D4AF37',
+            margin: '0 0 48px 0',
+            textAlign: 'center',
+            letterSpacing: '0.3px',
+            fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+          }}
+        >
+          Welcome to VP52
         </h1>
 
-        <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '32px', lineHeight: 1.5, padding: '0 10px' }}>
-          {t('welcomeSubtitle')}
-        </p>
-
-        {/* Feature Badges */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '12px',
-          marginBottom: '32px',
-          textAlign: 'left'
-        }}>
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '12px', borderRadius: '14px', fontSize: '12px', color: '#15803d', fontWeight: 700 }}>
-            ✨ {t('watchEarn')}
-          </div>
-          <div style={{ background: '#e0e7ff', border: '1px solid #c7d2fe', padding: '12px', borderRadius: '14px', fontSize: '12px', color: '#3730a3', fontWeight: 700 }}>
-            🏬 {t('benefitsNearYou')}
-          </div>
-        </div>
-
-        <button
-          onClick={() => navigate('/user-type-selection')}
-          className="btn-primary"
-          style={{ width: '100%', padding: '16px', fontSize: '16px', borderRadius: '14px', justifyContent: 'center' }}
-        >
-          {t('getStarted')} <ArrowRight size={20} />
-        </button>
-
-        <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '12px', color: '#64748b' }}>
-          <ShieldCheck size={16} color="#10b981" />
-          <span>{t('productionReadyMultiLang')}</span>
+        {/* 3. Get Started Button */}
+        <div className="ws-btn-anim" style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+          <button
+            type="button"
+            onClick={() => navigate('/user-type-selection')}
+            className="ws-btn-active"
+            style={{
+              width: '85%',
+              maxWidth: '360px',
+              height: '54px',
+              background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
+              color: '#000000',
+              border: 'none',
+              borderRadius: '14px',
+              fontSize: '16px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(212, 175, 55, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'transform 0.15s ease, filter 0.15s ease',
+              outline: 'none',
+              fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+            }}
+          >
+            Get Started
+          </button>
         </div>
       </div>
     </div>

@@ -13,7 +13,6 @@ export default function MerchantMap({
   const markersRef = useRef([]);
 
   useEffect(() => {
-    // Inject Leaflet CSS
     if (!document.getElementById('leaflet-css')) {
       const link = document.createElement('link');
       link.id = 'leaflet-css';
@@ -22,7 +21,6 @@ export default function MerchantMap({
       document.head.appendChild(link);
     }
 
-    // Inject Leaflet JS script dynamically
     const loadLeaflet = () => {
       if (window.L) {
         initMap();
@@ -51,16 +49,16 @@ export default function MerchantMap({
 
       leafletInstance.current = map;
 
-      // Customer Location Marker (Blue Pulsing Icon)
+      // Customer Location Marker (Gold Pulsing Icon)
       const userIcon = L.divIcon({
         className: 'custom-user-marker',
-        html: `<div style="background: #4f46e5; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 12px rgba(79, 70, 229, 0.8);"></div>`,
+        html: `<div style="background: #D4AF37; width: 18px; height: 18px; border-radius: 50%; border: 3px solid #050505; box-shadow: 0 0 12px rgba(212, 175, 55, 0.9);"></div>`,
         iconSize: [24, 24]
       });
 
       L.marker([userLat, userLng], { icon: userIcon })
         .addTo(map)
-        .bindPopup('<b>📍 Your Current Location</b>');
+        .bindPopup('<b style="color: #050505;">📍 Your Current Location</b>');
 
       if (isPinDropMode) {
         let pinMarker = L.marker([userLat, userLng], { draggable: true }).addTo(map);
@@ -80,13 +78,11 @@ export default function MerchantMap({
           }
         });
       } else {
-        // Render Merchant Markers
         renderMerchantMarkers(L, map);
       }
     };
 
     const renderMerchantMarkers = (L, map) => {
-      // Clear existing markers
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
@@ -96,17 +92,17 @@ export default function MerchantMap({
 
         const shopIcon = L.divIcon({
           className: 'custom-shop-marker',
-          html: `<div style="background: #10b981; color: white; padding: 4px 8px; border-radius: 12px; font-weight: 800; font-size: 11px; border: 2px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 4px;">🏪 ${m.name}</div>`,
+          html: `<div style="background: #111111; color: #F2D675; padding: 4px 8px; border-radius: 12px; font-weight: 800; font-size: 11px; border: 2px solid #D4AF37; box-shadow: 0 4px 12px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 4px;">🏪 ${m.name}</div>`,
           iconSize: [100, 30]
         });
 
         const marker = L.marker([lat, lng], { icon: shopIcon }).addTo(map);
 
         const popupContent = `
-          <div style="font-family: system-ui; max-width: 200px;">
-            <h4 style="margin: 0 0 4px 0; color: #0f172a; font-size: 14px;">${m.name}</h4>
-            <p style="margin: 0 0 6px 0; color: #64748b; font-size: 11px;">${m.category} • ${m.distance_km || 0.8} km away</p>
-            <span style="background: #dcfce7; color: #15803d; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; display: inline-block; margin-bottom: 8px;">10% Reward Eligible</span>
+          <div style="font-family: system-ui; max-width: 200px; color: #050505;">
+            <h4 style="margin: 0 0 4px 0; color: #050505; font-size: 14px; font-weight: 800;">${m.name}</h4>
+            <p style="margin: 0 0 6px 0; color: #475569; font-size: 11px;">${m.category} • ${m.distance_km || 0.8} km away</p>
+            <span style="background: #111111; color: #F2D675; padding: 3px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; display: inline-block; margin-bottom: 8px;">Gold Reward Partner</span>
           </div>
         `;
 
@@ -123,7 +119,7 @@ export default function MerchantMap({
   }, [userLat, userLng, merchants, isPinDropMode]);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '20px', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(212, 175, 55, 0.25)' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: '380px' }} />
     </div>
   );

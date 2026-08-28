@@ -24,30 +24,30 @@ export default function CustomerHistory() {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'ACTIVE':
-        return <span className="badge badge-active"><CheckCircle2 size={12} /> Active</span>;
+        return <span className="badge badge-active"><CheckCircle2 size={12} color="#F2D675" /> Active</span>;
       case 'USED':
-        return <span className="badge badge-used"><Clock size={12} /> Used</span>;
+        return <span className="badge badge-used"><Clock size={12} color="#B8B8B8" /> Used</span>;
       case 'EXPIRED':
-        return <span className="badge badge-expired"><XCircle size={12} /> Expired</span>;
+        return <span className="badge badge-expired"><XCircle size={12} color="#fca5a5" /> Expired</span>;
       default:
         return <span className="badge">{status}</span>;
     }
   };
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h2 style={{ fontSize: '22px', color: '#0f172a', marginBottom: '4px' }}>
+    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', background: '#050505' }}>
+      <h2 style={{ fontSize: '22px', color: '#FFFFFF', marginBottom: '4px', fontWeight: 800 }}>
         Redemption History
       </h2>
-      <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+      <p style={{ fontSize: '13px', color: '#B8B8B8', marginBottom: '16px' }}>
         View all your active and past redeemed shop discount vouchers.
       </p>
 
       {redemptions.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
-          <History size={48} color="#cbd5e1" style={{ marginBottom: '12px' }} />
-          <h3>No Redemptions Found</h3>
-          <p style={{ fontSize: '13px', marginTop: '4px' }}>Redeem your points for shop discount vouchers to see them here.</p>
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: '#B8B8B8' }}>
+          <History size={48} color="#777777" style={{ marginBottom: '12px' }} />
+          <h3 style={{ color: '#FFFFFF' }}>No Redemptions Found</h3>
+          <p style={{ fontSize: '13px', marginTop: '4px', color: '#B8B8B8' }}>Redeem your points for shop discount vouchers to see them here.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -55,29 +55,29 @@ export default function CustomerHistory() {
             <div
               key={item.id}
               style={{
-                background: '#ffffff',
+                background: '#111111',
                 borderRadius: '16px',
                 padding: '16px',
-                border: '1px solid #e2e8f0',
+                border: '1px solid rgba(212, 175, 55, 0.15)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                boxShadow: '0 8px 30px rgba(0,0,0,0.35)'
               }}
             >
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   {getStatusBadge(item.status)}
-                  <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                  <span style={{ fontSize: '11px', color: '#F2D675', fontWeight: 600 }}>
                     {item.redemption_code}
                   </span>
                 </div>
 
-                <h4 style={{ fontSize: '15px', color: '#0f172a', fontWeight: 700 }}>
+                <h4 style={{ fontSize: '15px', color: '#FFFFFF', fontWeight: 700 }}>
                   {item.discount_percent}% OFF — {item.shop_name}
                 </h4>
 
-                <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginTop: '2px' }}>
+                <span style={{ fontSize: '12px', color: '#B8B8B8', display: 'block', marginTop: '2px' }}>
                   {new Date(item.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} • Deducted: {item.points_deducted} Pts
                 </span>
               </div>
@@ -88,10 +88,10 @@ export default function CustomerHistory() {
                   className="btn-primary"
                   style={{ padding: '8px 14px', fontSize: '12px', borderRadius: '10px' }}
                 >
-                  <QrCode size={16} /> Show QR
+                  <QrCode size={16} color="#050505" /> Show QR
                 </button>
               ) : (
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#94a3b8' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#777777' }}>
                   {item.status}
                 </span>
               )}
@@ -103,23 +103,23 @@ export default function CustomerHistory() {
       {/* View QR Modal */}
       {selectedQR && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)', zIndex: 1000,
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)', zIndex: 1000,
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
         }}>
-          <div style={{ background: '#ffffff', borderRadius: '24px', maxWidth: '380px', width: '100%', padding: '24px', textAlign: 'center' }}>
-            <h3 style={{ fontSize: '18px', color: '#0f172a', marginBottom: '4px' }}>{selectedQR.shop_name}</h3>
-            <span style={{ fontSize: '20px', fontWeight: 800, color: '#4f46e5', display: 'block', marginBottom: '12px' }}>
+          <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '24px', maxWidth: '380px', width: '100%', padding: '24px', textAlign: 'center' }}>
+            <h3 style={{ fontSize: '18px', color: '#FFFFFF', marginBottom: '4px' }}>{selectedQR.shop_name}</h3>
+            <span style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675', display: 'block', marginBottom: '12px' }}>
               {selectedQR.discount_percent}% OFF DISCOUNT
             </span>
 
-            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'inline-block', marginBottom: '16px' }}>
+            <div style={{ background: '#FFFFFF', padding: '18px', borderRadius: '20px', display: 'inline-block', marginBottom: '16px' }}>
               <QRCodeSVG
                 value={JSON.stringify({ code: selectedQR.redemption_code, shop: selectedQR.shop_name })}
                 size={180}
               />
             </div>
 
-            <div style={{ fontSize: '14px', fontWeight: 800, letterSpacing: '0.05em', color: '#0f172a', marginBottom: '16px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 800, letterSpacing: '0.05em', color: '#FFFFFF', marginBottom: '16px' }}>
               Code: {selectedQR.redemption_code}
             </div>
 

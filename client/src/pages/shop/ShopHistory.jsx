@@ -5,8 +5,8 @@ import { History, Filter, CheckCircle2, Clock } from 'lucide-react';
 export default function ShopHistory() {
   const { token } = useAuth();
   const [history, setHistory] = useState([]);
-  const [timeFilter, setTimeFilter] = useState('all'); // 'today' | 'week' | 'month' | 'all'
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'USED' | 'ACTIVE'
+  const [timeFilter, setTimeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
   const fetchHistory = () => {
@@ -25,13 +25,13 @@ export default function ShopHistory() {
   }, [token, timeFilter, statusFilter]);
 
   return (
-    <div>
+    <div style={{ background: '#050505' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '24px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <History size={26} color="#10b981" /> Store Redemption History
+          <h2 style={{ fontSize: '24px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+            <History size={26} color="#D4AF37" /> Store Redemption History
           </h2>
-          <p style={{ fontSize: '14px', color: '#64748b' }}>
+          <p style={{ fontSize: '14px', color: '#B8B8B8' }}>
             Audit log of all vouchers redeemed and processed at your store location.
           </p>
         </div>
@@ -40,7 +40,7 @@ export default function ShopHistory() {
         <div style={{ display: 'flex', gap: '10px' }}>
           <select
             className="form-input"
-            style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '10px' }}
+            style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '10px', background: '#111111', color: '#FFFFFF', border: '1px solid #303030' }}
             value={timeFilter}
             onChange={(e) => setTimeFilter(e.target.value)}
           >
@@ -52,7 +52,7 @@ export default function ShopHistory() {
 
           <select
             className="form-input"
-            style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '10px' }}
+            style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '10px', background: '#111111', color: '#FFFFFF', border: '1px solid #303030' }}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -64,10 +64,10 @@ export default function ShopHistory() {
       </div>
 
       {/* History Table */}
-      <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+      <div style={{ background: '#111111', borderRadius: '16px', border: '1px solid rgba(212, 175, 55, 0.15)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
           <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase' }}>
+            <tr style={{ background: '#151515', borderBottom: '1px solid rgba(212, 175, 55, 0.15)', color: '#B8B8B8', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase' }}>
               <th style={{ padding: '14px 20px' }}>Redemption ID</th>
               <th style={{ padding: '14px 20px' }}>Customer</th>
               <th style={{ padding: '14px 20px' }}>Offer Applied</th>
@@ -80,27 +80,27 @@ export default function ShopHistory() {
           <tbody>
             {history.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#B8B8B8' }}>
                   No redemptions found for selected filters.
                 </td>
               </tr>
             ) : (
               history.map((r) => (
-                <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: 800, color: '#4f46e5' }}>{r.redemption_code}</td>
+                <tr key={r.id} style={{ borderBottom: '1px solid rgba(212, 175, 55, 0.1)' }}>
+                  <td style={{ padding: '14px 20px', fontWeight: 800, color: '#F2D675' }}>{r.redemption_code}</td>
                   <td style={{ padding: '14px 20px' }}>
-                    <span style={{ fontWeight: 700, color: '#0f172a', display: 'block' }}>{r.customer_name}</span>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>{r.customer_email}</span>
+                    <span style={{ fontWeight: 700, color: '#FFFFFF', display: 'block' }}>{r.customer_name}</span>
+                    <span style={{ fontSize: '12px', color: '#B8B8B8' }}>{r.customer_email}</span>
                   </td>
-                  <td style={{ padding: '14px 20px', color: '#475569' }}>{r.offer_title}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: 800, color: '#10b981' }}>{r.discount_percent}% OFF (Max ₹{r.max_discount_inr})</td>
-                  <td style={{ padding: '14px 20px', fontWeight: 700, color: '#4f46e5' }}>🪙 {r.points_deducted} Pts</td>
+                  <td style={{ padding: '14px 20px', color: '#B8B8B8' }}>{r.offer_title}</td>
+                  <td style={{ padding: '14px 20px', fontWeight: 800, color: '#D4AF37' }}>{r.discount_percent}% OFF (Max ₹{r.max_discount_inr})</td>
+                  <td style={{ padding: '14px 20px', fontWeight: 700, color: '#F2D675' }}>🪙 {r.points_deducted} Pts</td>
                   <td style={{ padding: '14px 20px' }}>
                     <span className={`badge ${r.status === 'USED' ? 'badge-used' : r.status === 'ACTIVE' ? 'badge-active' : 'badge-expired'}`}>
                       {r.status}
                     </span>
                   </td>
-                  <td style={{ padding: '14px 20px', fontSize: '12px', color: '#64748b' }}>
+                  <td style={{ padding: '14px 20px', fontSize: '12px', color: '#B8B8B8' }}>
                     {new Date(r.redeemed_at || r.created_at).toLocaleString('en-IN')}
                   </td>
                 </tr>

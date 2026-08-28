@@ -5,9 +5,6 @@ import MerchantMap from '../../components/MerchantMap';
 import { getCurrentLocation } from '../../utils/location';
 import { Store, Plus, Edit2, Trash2, MapPin, Phone, CheckCircle2, X, Key, ShieldAlert, Copy, RefreshCw, UserCheck, LocateFixed, Map as MapIcon, AlertTriangle } from 'lucide-react';
 
-// Client-side coordinate guard. Mirrors the server's validateCoordinates:
-// null/undefined/'' are rejected BEFORE Number() coercion (Number(null) === 0
-// would otherwise smuggle a missing coordinate through as a valid 0).
 function validCoord(lat, lng) {
   if (lat === null || lat === undefined || lat === '' || lng === null || lng === undefined || lng === '') return false;
   const la = Number(lat);
@@ -24,21 +21,14 @@ export default function AdminShops() {
   const [editingShop, setEditingShop] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Credential Confirmation Modal State
   const [createdCredentials, setCreatedCredentials] = useState(null);
 
-  // ── Shop-location picker state (shared by Add + Edit) ───────────────────────
-  // formData.latitude/longitude hold the CONFIRMED coordinates that get sent.
-  // candidate* hold a pending pick that the admin has not yet confirmed.
   const [locConfirmed, setLocConfirmed] = useState(false);
   const [candidateLat, setCandidateLat] = useState(null);
   const [candidateLng, setCandidateLng] = useState(null);
   const [showMap, setShowMap] = useState(false);
   const [locBusy, setLocBusy] = useState(false);
   const [locErr, setLocErr] = useState(null);
-  // Map view center. Changing it bumps mapEpoch so MerchantMap remounts and
-  // recenters (the component inits its Leaflet view only once). A pin drop does
-  // NOT touch this — the map stays put while the admin fine-tunes the pin.
   const [mapCenter, setMapCenter] = useState({ lat: 18.5204, lng: 73.8567 });
   const [mapEpoch, setMapEpoch] = useState(0);
 
@@ -66,8 +56,6 @@ export default function AdminShops() {
 
   useEffect(() => { fetchShops(); }, [token]);
 
-  // Reset the location picker to a clean state, optionally seeding it from an
-  // existing shop's coordinates (used when opening the Edit modal).
   const resetLocationPicker = (seedLat = null, seedLng = null) => {
     const hasSeed = validCoord(seedLat, seedLng);
     setLocErr(null);
@@ -130,9 +118,6 @@ export default function AdminShops() {
     setIsModalOpen(true);
   };
 
-  // [Use Current Location] — reuses utils/location.getCurrentLocation (Capacitor
-  // geolocation with web fallback). Result becomes a candidate the admin must
-  // still confirm, and recenters the map so they can verify/fine-tune the pin.
   const handleUseCurrentLocation = async () => {
     setLocErr(null);
     setLocBusy(true);
@@ -152,28 +137,23 @@ export default function AdminShops() {
     }
   };
 
-  // [Pick on Map] — reveals the reused MerchantMap in pin-drop mode.
   const handlePickOnMap = () => {
     setLocErr(null);
     setShowMap(true);
   };
 
-  // Pin drop / drag from MerchantMap. Updates the candidate only (no confirm).
   const handlePinDropped = (lat, lng) => {
     setCandidateLat(lat);
     setCandidateLng(lng);
     setLocConfirmed(false);
   };
 
-  // [Confirm This Location] — promotes the candidate into the confirmed formData
-  // coordinates. Only reachable when the candidate is a valid coordinate.
   const handleConfirmLocation = () => {
     if (!validCoord(candidateLat, candidateLng)) return;
     setFormData(fd => ({ ...fd, latitude: Number(candidateLat), longitude: Number(candidateLng) }));
     setLocConfirmed(true);
   };
 
-  // [Change Location] — reopens the picker so the admin can re-pick before saving.
   const handleChangeLocation = () => {
     setLocConfirmed(false);
     setShowMap(true);
@@ -238,9 +218,6 @@ export default function AdminShops() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Location is REQUIRED and must be explicitly confirmed for both create and
-    // edit — the server rejects missing/invalid coordinates, and we mirror that
-    // here so "Create Merchant" is never a dead click.
     if (!locConfirmed || !validCoord(formData.latitude, formData.longitude)) {
       setLocErr(t('shopLocationRequiredHint'));
       setShowMap(true);
@@ -287,15 +264,15 @@ export default function AdminShops() {
   const canSave = locConfirmed && validCoord(formData.latitude, formData.longitude) && !submitting;
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '1000px', margin: '0 auto', background: '#050505' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h2 style={{ fontSize: '24px', color: '#0f172a' }}>Merchants & Physical Store Catalog</h2>
-          <p style={{ fontSize: '14px', color: '#64748b' }}>Create shop accounts, assign merchant login credentials, and manage account statuses.</p>
+          <h2 style={{ fontSize: '24px', color: '#FFFFFF', fontWeight: 800 }}>Merchants & Physical Store Catalog</h2>
+          <p style={{ fontSize: '14px', color: '#B8B8B8' }}>Create shop accounts, assign merchant login credentials, and manage account statuses.</p>
         </div>
 
         <button onClick={handleOpenAdd} className="btn-primary" style={{ padding: '12px 20px', borderRadius: '12px' }}>
-          <Plus size={18} /> Add Shop + Merchant Credentials
+          <Plus size={18} color="#050505" /> Add Shop + Merchant Credentials
         </button>
       </div>
 
@@ -304,7 +281,7 @@ export default function AdminShops() {
         {shops.map((shop) => {
           const shopHasLocation = validCoord(shop.latitude, shop.longitude);
           return (
-          <div key={shop.id} style={{ background: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+          <div key={shop.id} style={{ background: '#111111', borderRadius: '20px', border: '1px solid rgba(212, 175, 55, 0.15)', overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
             <div style={{ height: '120px', position: 'relative' }}>
               <img src={shop.image_url} alt={shop.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '6px' }}>
@@ -316,31 +293,29 @@ export default function AdminShops() {
 
             <div style={{ padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#4f46e5', textTransform: 'uppercase' }}>{shop.category}</span>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: '#64748b' }}>{shop.shop_code || `SHOP-00${shop.id}`}</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#D4AF37', textTransform: 'uppercase' }}>{shop.category}</span>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#F2D675' }}>{shop.shop_code || `SHOP-00${shop.id}`}</span>
               </div>
 
-              <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: '2px 0 2px 0' }}>{shop.name}</h3>
-              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, display: 'block', marginBottom: '12px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#FFFFFF', margin: '2px 0 2px 0' }}>{shop.name}</h3>
+              <span style={{ fontSize: '12px', color: '#B8B8B8', fontWeight: 600, display: 'block', marginBottom: '12px' }}>
                 Owner: {shop.owner_name || 'Store Merchant'}
               </span>
 
-              <div style={{ fontSize: '12px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px', background: '#f8fafc', padding: '10px', borderRadius: '10px', marginBottom: '10px' }}>
+              <div style={{ fontSize: '12px', color: '#B8B8B8', display: 'flex', flexDirection: 'column', gap: '4px', background: '#151515', padding: '10px', borderRadius: '10px', marginBottom: '10px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
                 <div>📱 <strong>Login Mobile:</strong> {shop.phone || 'N/A'}</div>
                 <div>📧 <strong>Email:</strong> {shop.email || 'N/A'}</div>
                 <div>📍 <strong>Address:</strong> {shop.address}</div>
               </div>
 
-              {/* Location verification state — a shop only surfaces in customer
-                  "nearby" results when it has valid coordinates. */}
               {shopHasLocation ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '8px 10px', borderRadius: '10px', marginBottom: '16px', fontSize: '11.5px', fontWeight: 700 }}>
-                  <CheckCircle2 size={14} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '8px 10px', borderRadius: '10px', marginBottom: '16px', fontSize: '11.5px', fontWeight: 700 }}>
+                  <CheckCircle2 size={14} color="#F2D675" />
                   <span>{t('locVerifiedCard')} · {Number(shop.latitude).toFixed(5)}, {Number(shop.longitude).toFixed(5)}</span>
                 </div>
               ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fffbeb', border: '1px solid #fde68a', color: '#b45309', padding: '8px 10px', borderRadius: '10px', marginBottom: '16px', fontSize: '11.5px', fontWeight: 700 }}>
-                  <AlertTriangle size={14} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#151515', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', padding: '8px 10px', borderRadius: '10px', marginBottom: '16px', fontSize: '11.5px', fontWeight: 700 }}>
+                  <AlertTriangle size={14} color="#fca5a5" />
                   <span>{t('locMissingCard')}</span>
                 </div>
               )}
@@ -348,17 +323,17 @@ export default function AdminShops() {
               {/* Status Action Buttons */}
               <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
                 {shop.status !== 'active' && (
-                  <button onClick={() => handleStatusChange(shop.id, 'active')} style={{ flex: 1, padding: '6px', background: '#dcfce7', color: '#15803d', border: '1px solid #a7f3d0', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                  <button onClick={() => handleStatusChange(shop.id, 'active')} style={{ flex: 1, padding: '6px', background: '#151515', color: '#F2D675', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
                     Activate
                   </button>
                 )}
                 {shop.status !== 'suspended' && (
-                  <button onClick={() => handleStatusChange(shop.id, 'suspended')} style={{ flex: 1, padding: '6px', background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                  <button onClick={() => handleStatusChange(shop.id, 'suspended')} style={{ flex: 1, padding: '6px', background: '#151515', color: '#B8B8B8', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
                     Suspend
                   </button>
                 )}
                 {shop.status !== 'inactive' && (
-                  <button onClick={() => handleStatusChange(shop.id, 'inactive')} style={{ flex: 1, padding: '6px', background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
+                  <button onClick={() => handleStatusChange(shop.id, 'inactive')} style={{ flex: 1, padding: '6px', background: '#151515', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer' }}>
                     Deactivate
                   </button>
                 )}
@@ -367,13 +342,13 @@ export default function AdminShops() {
               {/* Edit / Reset Password / Delete */}
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={() => handleOpenEdit(shop)} className="btn-secondary" style={{ flex: 1, padding: '8px', fontSize: '12px' }}>
-                  <Edit2 size={14} /> Edit
+                  <Edit2 size={14} color="#D4AF37" /> Edit
                 </button>
-                <button onClick={() => handleResetCredentials(shop.id)} style={{ background: '#f3e8ff', color: '#6b21a8', border: '1px solid #e9d5ff', padding: '8px', borderRadius: '10px', fontWeight: 700, fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Key size={14} /> Reset Pass
+                <button onClick={() => handleResetCredentials(shop.id)} className="btn-secondary" style={{ padding: '8px', fontSize: '12px' }}>
+                  <Key size={14} color="#D4AF37" /> Reset Pass
                 </button>
-                <button onClick={() => handleDelete(shop.id)} style={{ border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', padding: '8px 12px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', fontSize: '12px' }}>
-                  <Trash2 size={14} />
+                <button onClick={() => handleDelete(shop.id)} style={{ border: '1px solid rgba(239, 68, 68, 0.3)', background: '#151515', color: '#ef4444', padding: '8px 12px', borderRadius: '10px', fontWeight: 700, cursor: 'pointer', fontSize: '12px' }}>
+                  <Trash2 size={14} color="#ef4444" />
                 </button>
               </div>
             </div>
@@ -384,57 +359,57 @@ export default function AdminShops() {
 
       {/* CONFIRMATION MODAL: SHOWS CREATED MERCHANT CREDENTIALS ONCE */}
       {createdCredentials && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#ffffff', borderRadius: '24px', maxWidth: '480px', width: '100%', padding: '28px', border: '2px solid #a7f3d0' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#dcfce7', color: '#15803d', padding: '6px 14px', borderRadius: '99px', fontWeight: 800, fontSize: '12px', marginBottom: '16px' }}>
-              <CheckCircle2 size={16} /> ✅ MERCHANT CREDENTIALS CREATED
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#111111', borderRadius: '24px', maxWidth: '480px', width: '100%', padding: '28px', border: '1px solid rgba(212, 175, 55, 0.3)' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '6px 14px', borderRadius: '99px', fontWeight: 800, fontSize: '12px', marginBottom: '16px' }}>
+              <CheckCircle2 size={16} color="#F2D675" /> ✅ MERCHANT CREDENTIALS CREATED
             </div>
 
-            <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+            <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#FFFFFF', marginBottom: '4px' }}>
               {createdCredentials.shopName}
             </h3>
-            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
-              Owner: <strong>{createdCredentials.ownerName}</strong> • Shop ID: <strong>{createdCredentials.shopCode}</strong>
+            <p style={{ fontSize: '13px', color: '#B8B8B8', marginBottom: '20px' }}>
+              Owner: <strong style={{ color: '#FFFFFF' }}>{createdCredentials.ownerName}</strong> • Shop ID: <strong style={{ color: '#F2D675' }}>{createdCredentials.shopCode}</strong>
             </p>
 
-            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', border: '1.5px solid #cbd5e1', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '14px' }}>
+            <div style={{ background: '#151515', padding: '16px', borderRadius: '16px', border: '1px solid rgba(212, 175, 55, 0.15)', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '14px' }}>
               <div>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>PRIMARY LOGIN MOBILE NUMBER</span>
-                <strong style={{ color: '#0f172a', fontSize: '16px' }}>📱 {createdCredentials.mobileNumber}</strong>
+                <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>PRIMARY LOGIN MOBILE NUMBER</span>
+                <strong style={{ color: '#FFFFFF', fontSize: '16px' }}>📱 {createdCredentials.mobileNumber}</strong>
               </div>
 
               <div>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>EMAIL ADDRESS</span>
-                <strong style={{ color: '#0f172a' }}>✉️ {createdCredentials.email}</strong>
+                <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>EMAIL ADDRESS</span>
+                <strong style={{ color: '#FFFFFF' }}>✉️ {createdCredentials.email}</strong>
               </div>
 
               {validCoord(createdCredentials.latitude, createdCredentials.longitude) && (
                 <div>
-                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>CONFIRMED SHOP LOCATION</span>
-                  <strong style={{ color: '#0f172a' }}>📍 {Number(createdCredentials.latitude).toFixed(6)}, {Number(createdCredentials.longitude).toFixed(6)}</strong>
+                  <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>CONFIRMED SHOP LOCATION</span>
+                  <strong style={{ color: '#FFFFFF' }}>📍 {Number(createdCredentials.latitude).toFixed(6)}, {Number(createdCredentials.longitude).toFixed(6)}</strong>
                 </div>
               )}
 
               <div>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>TEMPORARY PASSWORD (SHOWN ONCE)</span>
-                <div style={{ background: '#e0e7ff', border: '1px solid #c7d2fe', padding: '10px 14px', borderRadius: '10px', color: '#3730a3', fontWeight: 800, fontSize: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>TEMPORARY PASSWORD (SHOWN ONCE)</span>
+                <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.3)', padding: '10px 14px', borderRadius: '10px', color: '#F2D675', fontWeight: 800, fontSize: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                   <span>{createdCredentials.temporaryPassword}</span>
                   <button
                     onClick={() => navigator.clipboard.writeText(createdCredentials.temporaryPassword)}
-                    style={{ border: 'none', background: 'none', color: '#4f46e5', cursor: 'pointer', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}
+                    style={{ border: 'none', background: 'none', color: '#D4AF37', cursor: 'pointer', fontSize: '12px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
-                    <Copy size={14} /> Copy
+                    <Copy size={14} color="#D4AF37" /> Copy
                   </button>
                 </div>
               </div>
 
               <div>
-                <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>ACCOUNT STATUS</span>
+                <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>ACCOUNT STATUS</span>
                 <span className="badge badge-active" style={{ display: 'inline-block', marginTop: '4px' }}>{createdCredentials.accountStatus}</span>
               </div>
             </div>
 
-            <button onClick={() => setCreatedCredentials(null)} className="btn-success" style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}>
+            <button onClick={() => setCreatedCredentials(null)} className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}>
               Done / Close Confirmation
             </button>
           </div>
@@ -443,37 +418,37 @@ export default function AdminShops() {
 
       {/* Add / Edit Shop Modal */}
       {isModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.8)', backdropFilter: 'blur(6px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#ffffff', borderRadius: '24px', maxWidth: '520px', width: '100%', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '24px', maxWidth: '520px', width: '100%', padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '20px', color: '#0f172a' }}>{editingShop ? 'Edit Merchant Account' : 'Add Shop + Merchant Credentials'}</h3>
-              <button onClick={() => setIsModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} color="#64748b" /></button>
+              <h3 style={{ fontSize: '20px', color: '#FFFFFF', fontWeight: 800 }}>{editingShop ? 'Edit Merchant Account' : 'Add Shop + Merchant Credentials'}</h3>
+              <button onClick={() => setIsModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><X size={20} color="#B8B8B8" /></button>
             </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Owner Full Name *</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8' }}>Owner Full Name *</label>
                 <input type="text" required className="form-input" value={formData.owner_name} onChange={e => setFormData({ ...formData, owner_name: e.target.value })} placeholder="e.g. Ramesh Kumar" />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Shop / Business Name *</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8' }}>Shop / Business Name *</label>
                 <input type="text" required className="form-input" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Royal Sweets & Bakers" />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Login Mobile Number * (Primary Login ID)</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8' }}>Login Mobile Number * (Primary Login ID)</label>
                 <input type="tel" required className="form-input" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} placeholder="e.g. 9876543210" />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Shop Email Address *</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8' }}>Shop Email Address *</label>
                 <input type="email" required className="form-input" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="merchant@example.com" />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Category</label>
-                <select className="form-input" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8' }}>Category</label>
+                <select className="form-input" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} style={{ background: '#111111', color: '#FFFFFF' }}>
                   <option value="Restaurant">Restaurant & Food</option>
                   <option value="Clothing">Clothing & Apparel</option>
                   <option value="Paithani">Paithani & Sarees</option>
@@ -484,13 +459,13 @@ export default function AdminShops() {
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Physical Address *</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8' }}>Physical Address *</label>
                 <input type="text" required className="form-input" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} placeholder="Shop 10, FC Road, Pune" />
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Initial Account Status</label>
-                <select className="form-input" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8' }}>Initial Account Status</label>
+                <select className="form-input" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value })} style={{ background: '#111111', color: '#FFFFFF' }}>
                   <option value="active">Active (Immediate Login Granted)</option>
                   <option value="pending">Pending Admin Review</option>
                   <option value="suspended">Suspended</option>
@@ -498,55 +473,54 @@ export default function AdminShops() {
                 </select>
               </div>
 
-              {/* ── REQUIRED Shop Location picker (Phase 2 / 2B) ─────────────── */}
-              <div style={{ border: '1.5px solid #e2e8f0', borderRadius: '16px', padding: '14px', background: '#fafafa' }}>
-                <label style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MapPin size={16} color="#4f46e5" /> {t('shopLocationLabel')} *
+              {/* Shop Location picker */}
+              <div style={{ border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '16px', padding: '14px', background: '#151515' }}>
+                <label style={{ fontSize: '13px', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MapPin size={16} color="#D4AF37" /> {t('shopLocationLabel')} *
                 </label>
 
-                {/* Confirmed state */}
                 {locConfirmed && validCoord(formData.latitude, formData.longitude) ? (
                   <div style={{ marginTop: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '12px', borderRadius: '12px', fontWeight: 800, fontSize: '13px' }}>
-                      <CheckCircle2 size={18} /> ✓ {t('locationConfirmedLabel')}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#111111', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '12px', borderRadius: '12px', fontWeight: 800, fontSize: '13px' }}>
+                      <CheckCircle2 size={18} color="#F2D675" /> ✓ {t('locationConfirmedLabel')}
                     </div>
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '8px', fontSize: '13px', color: '#334155' }}>
-                      <div style={{ flex: 1, background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px 10px' }}>
-                        <span style={{ fontSize: '10px', color: '#64748b', display: 'block', fontWeight: 700 }}>{t('latitudeLabel')}</span>
-                        <strong>{Number(formData.latitude).toFixed(6)}</strong>
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '8px', fontSize: '13px', color: '#B8B8B8' }}>
+                      <div style={{ flex: 1, background: '#111111', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '10px', padding: '8px 10px' }}>
+                        <span style={{ fontSize: '10px', color: '#B8B8B8', display: 'block', fontWeight: 700 }}>{t('latitudeLabel')}</span>
+                        <strong style={{ color: '#FFFFFF' }}>{Number(formData.latitude).toFixed(6)}</strong>
                       </div>
-                      <div style={{ flex: 1, background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '8px 10px' }}>
-                        <span style={{ fontSize: '10px', color: '#64748b', display: 'block', fontWeight: 700 }}>{t('longitudeLabel')}</span>
-                        <strong>{Number(formData.longitude).toFixed(6)}</strong>
+                      <div style={{ flex: 1, background: '#111111', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '10px', padding: '8px 10px' }}>
+                        <span style={{ fontSize: '10px', color: '#B8B8B8', display: 'block', fontWeight: 700 }}>{t('longitudeLabel')}</span>
+                        <strong style={{ color: '#FFFFFF' }}>{Number(formData.longitude).toFixed(6)}</strong>
                       </div>
                     </div>
                     <button type="button" onClick={handleChangeLocation} className="btn-secondary" style={{ width: '100%', marginTop: '10px', padding: '10px', fontSize: '13px', justifyContent: 'center' }}>
-                      <RefreshCw size={14} /> {t('changeLocationBtn')}
+                      <RefreshCw size={14} color="#D4AF37" /> {t('changeLocationBtn')}
                     </button>
                   </div>
                 ) : (
                   <div style={{ marginTop: '10px' }}>
-                    <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px 0' }}>{t('shopLocationRequiredHint')}</p>
+                    <p style={{ fontSize: '12px', color: '#B8B8B8', margin: '0 0 10px 0' }}>{t('shopLocationRequiredHint')}</p>
 
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       <button type="button" onClick={handleUseCurrentLocation} disabled={locBusy} className="btn-secondary" style={{ flex: 1, minWidth: '150px', padding: '10px', fontSize: '13px', justifyContent: 'center' }}>
-                        <LocateFixed size={15} /> {locBusy ? t('gettingLocationAdmin') : t('useCurrentLocationBtn')}
+                        <LocateFixed size={15} color="#D4AF37" /> {locBusy ? t('gettingLocationAdmin') : t('useCurrentLocationBtn')}
                       </button>
                       <button type="button" onClick={handlePickOnMap} className="btn-secondary" style={{ flex: 1, minWidth: '150px', padding: '10px', fontSize: '13px', justifyContent: 'center' }}>
-                        <MapIcon size={15} /> {t('pickOnMapBtn')}
+                        <MapIcon size={15} color="#D4AF37" /> {t('pickOnMapBtn')}
                       </button>
                     </div>
 
                     {locErr && (
-                      <div style={{ marginTop: '10px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '10px', borderRadius: '10px', fontSize: '12px', fontWeight: 700 }}>
+                      <div style={{ marginTop: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', padding: '10px', borderRadius: '10px', fontSize: '12px', fontWeight: 700 }}>
                         {locErr}
                       </div>
                     )}
 
                     {showMap && (
                       <div style={{ marginTop: '12px' }}>
-                        <p style={{ fontSize: '11.5px', color: '#64748b', margin: '0 0 8px 0' }}>{t('tapMapToDrop')}</p>
-                        <div style={{ height: '300px', borderRadius: '16px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                        <p style={{ fontSize: '11.5px', color: '#B8B8B8', margin: '0 0 8px 0' }}>{t('tapMapToDrop')}</p>
+                        <div style={{ height: '300px', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(212, 175, 55, 0.25)' }}>
                           <MerchantMap
                             key={`admin-picker-${mapEpoch}`}
                             userLat={mapCenter.lat}
@@ -556,20 +530,20 @@ export default function AdminShops() {
                           />
                         </div>
 
-                        <div style={{ marginTop: '10px', fontSize: '12.5px', color: '#334155' }}>
+                        <div style={{ marginTop: '10px', fontSize: '12.5px', color: '#B8B8B8' }}>
                           {validCoord(candidateLat, candidateLng) ? (
                             <div style={{ display: 'flex', gap: '10px' }}>
-                              <div style={{ flex: 1, background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '10px', padding: '8px 10px' }}>
-                                <span style={{ fontSize: '10px', color: '#4f46e5', display: 'block', fontWeight: 700 }}>{t('latitudeLabel')}</span>
-                                <strong>{Number(candidateLat).toFixed(6)}</strong>
+                              <div style={{ flex: 1, background: '#111111', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '10px', padding: '8px 10px' }}>
+                                <span style={{ fontSize: '10px', color: '#D4AF37', display: 'block', fontWeight: 700 }}>{t('latitudeLabel')}</span>
+                                <strong style={{ color: '#FFFFFF' }}>{Number(candidateLat).toFixed(6)}</strong>
                               </div>
-                              <div style={{ flex: 1, background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '10px', padding: '8px 10px' }}>
-                                <span style={{ fontSize: '10px', color: '#4f46e5', display: 'block', fontWeight: 700 }}>{t('longitudeLabel')}</span>
-                                <strong>{Number(candidateLng).toFixed(6)}</strong>
+                              <div style={{ flex: 1, background: '#111111', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '10px', padding: '8px 10px' }}>
+                                <span style={{ fontSize: '10px', color: '#D4AF37', display: 'block', fontWeight: 700 }}>{t('longitudeLabel')}</span>
+                                <strong style={{ color: '#FFFFFF' }}>{Number(candidateLng).toFixed(6)}</strong>
                               </div>
                             </div>
                           ) : (
-                            <span style={{ color: '#94a3b8' }}>{t('noLocationYet')}</span>
+                            <span style={{ color: '#777777' }}>{t('noLocationYet')}</span>
                           )}
                         </div>
 
@@ -580,7 +554,7 @@ export default function AdminShops() {
                           className="btn-primary"
                           style={{ width: '100%', marginTop: '10px', padding: '12px', fontSize: '14px', justifyContent: 'center', opacity: validCoord(candidateLat, candidateLng) ? 1 : 0.5, cursor: validCoord(candidateLat, candidateLng) ? 'pointer' : 'not-allowed' }}
                         >
-                          <CheckCircle2 size={16} /> {t('confirmLocationBtn')}
+                          <CheckCircle2 size={16} color="#050505" /> {t('confirmLocationBtn')}
                         </button>
                       </div>
                     )}

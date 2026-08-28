@@ -86,22 +86,22 @@ export default function ShopDashboard() {
   };
 
   if (loading || !data) {
-    return <div style={{ padding: '40px', color: '#64748b', textAlign: 'center' }}>Loading merchant dashboard...</div>;
+    return <div style={{ padding: '40px', color: '#B8B8B8', textAlign: 'center' }}>Loading merchant dashboard...</div>;
   }
 
   const { shop, stats, recentRedemptions, activeOffers } = data;
 
   return (
-    <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '600px', margin: '0 auto', background: '#050505' }}>
       {/* Top Header & Store ID Badge */}
-      <div style={{ background: '#ffffff', borderRadius: '20px', padding: '20px', border: '1px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-        <span style={{ fontSize: '10px', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.08em', background: '#dcfce7', padding: '4px 10px', borderRadius: '6px' }}>
+      <div style={{ background: '#111111', borderRadius: '20px', padding: '20px', border: '1px solid rgba(212, 175, 55, 0.25)', marginBottom: '16px', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
+        <span style={{ fontSize: '10px', fontWeight: 800, color: '#D4AF37', textTransform: 'uppercase', letterSpacing: '0.08em', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', padding: '4px 10px', borderRadius: '6px' }}>
           VERIFIED MERCHANT STORE
         </span>
-        <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', marginTop: '6px', marginBottom: '2px' }}>
+        <h1 style={{ fontSize: '22px', fontWeight: 800, color: '#FFFFFF', marginTop: '6px', marginBottom: '2px' }}>
           {shop.name}
         </h1>
-        <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+        <p style={{ fontSize: '12px', color: '#B8B8B8', margin: 0 }}>
           {shop.address} • {shop.category}
         </p>
       </div>
@@ -109,7 +109,7 @@ export default function ShopDashboard() {
       {/* PROMINENT MOBILE CTA: SCAN CUSTOMER QR */}
       <button
         onClick={() => setIsCameraOpen(true)}
-        className="btn-success pulse-glow"
+        className="btn-primary pulse-glow"
         style={{
           width: '100%',
           padding: '18px',
@@ -117,94 +117,94 @@ export default function ShopDashboard() {
           borderRadius: '20px',
           marginBottom: '20px',
           justifyContent: 'center',
-          boxShadow: '0 10px 25px rgba(16, 185, 129, 0.4)'
+          boxShadow: '0 10px 25px rgba(212, 175, 55, 0.3)'
         }}
       >
-        <QrCode size={24} /> Scan Customer QR (Device Camera)
+        <QrCode size={24} color="#050505" /> Scan Customer QR (Device Camera)
       </button>
 
       {/* Customer Found Card Modal / Banner */}
       {scannedCustomer && (
         <div style={{
-          background: '#ffffff', borderRadius: '24px', padding: '24px', border: '2px solid #a7f3d0',
-          marginBottom: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)'
+          background: '#111111', borderRadius: '24px', padding: '24px', border: '1px solid rgba(212, 175, 55, 0.3)',
+          marginBottom: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
         }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#dcfce7', color: '#15803d', padding: '4px 12px', borderRadius: '99px', fontWeight: 800, fontSize: '12px', marginBottom: '16px' }}>
-            <CheckCircle2 size={14} /> CUSTOMER VERIFIED
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '4px 12px', borderRadius: '99px', fontWeight: 800, fontSize: '12px', marginBottom: '16px' }}>
+            <CheckCircle2 size={14} color="#F2D675" /> CUSTOMER VERIFIED
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
             <img src={scannedCustomer.profile_photo} alt={scannedCustomer.full_name} style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover' }} />
             <div>
-              <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: 0 }}>{scannedCustomer.full_name}</h3>
-              <span style={{ fontSize: '12px', color: '#64748b' }}>{scannedCustomer.email} • {scannedCustomer.phone}</span>
+              <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>{scannedCustomer.full_name}</h3>
+              <span style={{ fontSize: '12px', color: '#B8B8B8' }}>{scannedCustomer.email} • {scannedCustomer.phone}</span>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', fontSize: '13px' }}>
-            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Available Points</span>
-              <strong style={{ fontSize: '18px', color: '#4f46e5' }}>🪙 {scannedCustomer.balance.toLocaleString()} Pts</strong>
+            <div style={{ background: '#151515', padding: '12px', borderRadius: '12px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>Available Points</span>
+              <strong style={{ fontSize: '18px', color: '#F2D675' }}>🪙 {scannedCustomer.balance.toLocaleString()} Pts</strong>
             </div>
 
-            <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Current Tier</span>
-              <strong style={{ fontSize: '18px', color: '#10b981' }}>🏆 {scannedCustomer.current_level}</strong>
+            <div style={{ background: '#151515', padding: '12px', borderRadius: '12px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>Current Tier</span>
+              <strong style={{ fontSize: '18px', color: '#D4AF37' }}>🏆 {scannedCustomer.current_level}</strong>
             </div>
           </div>
 
           <button
             onClick={handleProceedToBilling}
-            className="btn-success"
+            className="btn-primary"
             style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center', borderRadius: '14px' }}
           >
-            Create Bill / Redeem Reward <ArrowRight size={18} />
+            Create Bill / Redeem Reward <ArrowRight size={18} color="#050505" />
           </button>
         </div>
       )}
 
       {scanError && (
-        <div style={{ background: '#fef2f2', border: '1.5px solid #fecaca', color: '#b91c1c', padding: '16px', borderRadius: '16px', marginBottom: '20px', fontSize: '13px', fontWeight: 700 }}>
+        <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', padding: '16px', borderRadius: '16px', marginBottom: '20px', fontSize: '13px', fontWeight: 700 }}>
           {scanError}
         </div>
       )}
 
       {/* KPI Mobile Grid Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
-        <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1px solid #e2e8f0' }}>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>Today's Redemptions</span>
-          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '4px 0 0 0' }}>{stats.todayRedemptions}</h2>
+        <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Today's Redemptions</span>
+          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', margin: '4px 0 0 0' }}>{stats.todayRedemptions}</h2>
         </div>
 
-        <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1px solid #e2e8f0' }}>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>Total Redemptions</span>
-          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', margin: '4px 0 0 0' }}>{stats.totalRedemptions}</h2>
+        <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Total Redemptions</span>
+          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', margin: '4px 0 0 0' }}>{stats.totalRedemptions}</h2>
         </div>
 
-        <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1px solid #e2e8f0' }}>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>Active Offers</span>
-          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#4f46e5', margin: '4px 0 0 0' }}>{stats.activeOffersCount}</h2>
+        <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Active Offers</span>
+          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#F2D675', margin: '4px 0 0 0' }}>{stats.activeOffersCount}</h2>
         </div>
 
-        <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1px solid #e2e8f0' }}>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>Total Discounts</span>
-          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#10b981', margin: '4px 0 0 0' }}>₹{stats.totalDiscountsGiven}</h2>
+        <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Total Discounts</span>
+          <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#D4AF37', margin: '4px 0 0 0' }}>₹{stats.totalDiscountsGiven}</h2>
         </div>
       </div>
 
       {/* Recent Redemptions Card List */}
-      <div style={{ background: '#ffffff', borderRadius: '20px', padding: '20px', border: '1px solid #e2e8f0' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a', marginBottom: '14px' }}>Recent Store Redemptions</h3>
+      <div style={{ background: '#111111', borderRadius: '20px', padding: '20px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF', marginBottom: '14px' }}>Recent Store Redemptions</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {recentRedemptions.map(r => (
-            <div key={r.id} style={{ background: '#f8fafc', padding: '12px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div key={r.id} style={{ background: '#151515', padding: '12px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <span style={{ fontWeight: 800, color: '#4f46e5', fontSize: '13px' }}>{r.redemption_code}</span>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>{r.customer_name}</div>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>{r.offer_title}</span>
+                <span style={{ fontWeight: 800, color: '#F2D675', fontSize: '13px' }}>{r.redemption_code}</span>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#FFFFFF' }}>{r.customer_name}</div>
+                <span style={{ fontSize: '11px', color: '#B8B8B8' }}>{r.offer_title}</span>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontWeight: 800, color: '#10b981', fontSize: '13px' }}>{r.discount_percent}% OFF</span>
+                <span style={{ fontWeight: 800, color: '#D4AF37', fontSize: '13px' }}>{r.discount_percent}% OFF</span>
                 <span className={`badge ${r.status === 'USED' ? 'badge-used' : 'badge-active'}`} style={{ display: 'block', marginTop: '4px', fontSize: '10px' }}>{r.status}</span>
               </div>
             </div>

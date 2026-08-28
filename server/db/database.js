@@ -288,6 +288,20 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_conversations_shop ON conversations (shop_id, last_message_at);
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages (conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages (conversation_id, sender_role, read_at);
+    CREATE TABLE IF NOT EXISTS vp52_coin_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      ads_completed INTEGER DEFAULT 0,
+      started_at DATETIME,
+      expires_at DATETIME,
+      duration_seconds INTEGER DEFAULT 21600,
+      status TEXT DEFAULT 'pending_ads',
+      coins_earned REAL DEFAULT 0,
+      reward_claimed INTEGER DEFAULT 0,
+      completed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    );
   `);
 
   // Migrations for safety

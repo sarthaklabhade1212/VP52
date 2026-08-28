@@ -36,20 +36,17 @@ export default function ShopLayout() {
     window.location.href = '/customer/login';
   };
 
-  // Force-change gate: a merchant with a pending admin-issued password change must
-  // complete it before reaching ANY dashboard page. The /shop/change-password route
-  // lives OUTSIDE this layout, so redirecting here can never loop.
   if (user && user.must_change_password) {
     return <Navigate to="/shop/change-password" replace />;
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#050505' }}>
       {/* Mobile Top Header */}
       <header style={{
         height: '60px',
-        background: '#064e3b',
-        color: '#ffffff',
+        background: '#0B0B0B',
+        color: '#FFFFFF',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -57,21 +54,22 @@ export default function ShopLayout() {
         position: 'sticky',
         top: 0,
         zIndex: 100,
-        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+        borderBottom: '1px solid rgba(212, 175, 55, 0.2)',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.8)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '36px', height: '36px', borderRadius: '10px',
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800
+            background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#050505', fontWeight: 800
           }}>
-            <Store size={20} />
+            <Store size={20} color="#050505" />
           </div>
           <div>
-            <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff', margin: 0, lineHeight: 1.1 }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#FFFFFF', margin: 0, lineHeight: 1.1 }}>
               {user ? user.shop_name || user.full_name : t('shopMerchantFallback')}
             </h3>
-            <span style={{ fontSize: '10px', color: '#a7f3d0', fontWeight: 600 }}>
+            <span style={{ fontSize: '10px', color: '#D4AF37', fontWeight: 600 }}>
               {user ? user.shop_code || 'SHOP-001' : 'SHOP-001'} • {t('physicalVerifier')}
             </span>
           </div>
@@ -81,9 +79,9 @@ export default function ShopLayout() {
           <LanguageSwitcher tone="dark" compact />
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            style={{ background: 'none', border: 'none', color: '#ffffff', padding: '6px', cursor: 'pointer' }}
+            style={{ background: 'none', border: 'none', color: '#D4AF37', padding: '6px', cursor: 'pointer' }}
           >
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            {isMobileMenuOpen ? <X size={24} color="#D4AF37" /> : <Menu size={24} color="#D4AF37" />}
           </button>
         </div>
       </header>
@@ -91,48 +89,48 @@ export default function ShopLayout() {
       {/* Slide-out Mobile Drawer Menu */}
       {isMobileMenuOpen && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(8px)', zIndex: 1500,
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(10px)', zIndex: 1500,
           display: 'flex', flexDirection: 'column'
         }} className="animate-slide-up">
-          <div style={{ padding: '20px', background: '#064e3b', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '20px', background: '#0B0B0B', borderBottom: '1px solid rgba(212, 175, 55, 0.2)', color: '#FFFFFF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Store size={24} color="#10b981" />
+              <Store size={24} color="#D4AF37" />
               <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0 }}>{user ? user.shop_name : t('shopStoreFallback')}</h3>
-                <span style={{ fontSize: '11px', color: '#a7f3d0' }}>{user ? user.email : ''}</span>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: '#FFFFFF' }}>{user ? user.shop_name : t('shopStoreFallback')}</h3>
+                <span style={{ fontSize: '11px', color: '#B8B8B8' }}>{user ? user.email : ''}</span>
               </div>
             </div>
-            <button onClick={() => setIsMobileMenuOpen(false)} style={{ background: 'none', border: 'none', color: 'white' }}>
-              <X size={24} />
+            <button onClick={() => setIsMobileMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#D4AF37', cursor: 'pointer' }}>
+              <X size={24} color="#D4AF37" />
             </button>
           </div>
 
-          <div style={{ flex: 1, padding: '20px', background: '#022c22', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ flex: 1, padding: '20px', background: '#111111', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button
               onClick={handleSwitchToCustomerMode}
+              className="btn-secondary"
               style={{
-                padding: '14px', borderRadius: '12px', background: '#047857', color: 'white', border: 'none',
-                fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                padding: '14px', borderRadius: '12px', fontSize: '14px', fontWeight: 700, justifyContent: 'center'
               }}
             >
-              <RefreshCw size={18} /> {t('switchToCustomer')}
+              <RefreshCw size={18} color="#D4AF37" /> {t('switchToCustomer')}
             </button>
 
             <button
               onClick={handleLogout}
               style={{
-                padding: '14px', borderRadius: '12px', background: '#7f1d1d', color: '#fca5a5', border: 'none',
-                fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: 'auto'
+                padding: '14px', borderRadius: '12px', background: '#151515', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)',
+                fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: 'auto', cursor: 'pointer'
               }}
             >
-              <LogOut size={18} /> {t('signOutMerchant')}
+              <LogOut size={18} color="#ef4444" /> {t('signOutMerchant')}
             </button>
           </div>
         </div>
       )}
 
       {/* Main Responsive Content */}
-      <main style={{ flex: 1, padding: '16px 16px 80px 16px', overflowY: 'auto' }}>
+      <main style={{ flex: 1, padding: '16px 16px 80px 16px', overflowY: 'auto', background: '#050505' }}>
         <Outlet />
       </main>
 
@@ -143,13 +141,13 @@ export default function ShopLayout() {
         left: 0,
         right: 0,
         height: '64px',
-        background: '#ffffff',
-        borderTop: '1px solid #e2e8f0',
+        background: '#0B0B0B',
+        borderTop: '1px solid rgba(212, 175, 55, 0.2)',
         display: 'flex',
-        justifyContent: 'space-around',
+        justify: 'space-around',
         alignItems: 'center',
         zIndex: 1000,
-        boxShadow: '0 -4px 15px rgba(0,0,0,0.05)'
+        boxShadow: '0 -4px 20px rgba(0,0,0,0.8)'
       }}>
         <NavLink to="/shop/dashboard" className={({ isActive }) => `mobile-nav-link ${isActive ? 'active' : ''}`}>
           <QrCode size={20} />
@@ -175,7 +173,7 @@ export default function ShopLayout() {
           <div style={{ position: 'relative', display: 'inline-flex' }}>
             <MessageCircle size={20} />
             {unread > 0 && (
-              <span style={{ position: 'absolute', top: '-6px', right: '-10px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, borderRadius: '999px', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
+              <span style={{ position: 'absolute', top: '-6px', right: '-10px', background: '#ef4444', color: '#FFFFFF', fontSize: '10px', fontWeight: 800, borderRadius: '999px', minWidth: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>
                 {unread > 99 ? '99+' : unread}
               </span>
             )}
@@ -195,17 +193,18 @@ export default function ShopLayout() {
           flex-direction: column;
           align-items: center;
           gap: 3px;
-          color: #64748b;
+          color: #777777;
           font-size: 10px;
           font-weight: 700;
           text-decoration: none;
-          padding: 6px 12px;
+          padding: 6px 10px;
           border-radius: 12px;
           transition: all 0.2s ease;
         }
         .mobile-nav-link.active {
-          color: #059669;
-          background: #dcfce7;
+          color: #D4AF37;
+          background: rgba(212, 175, 55, 0.12);
+          border: 1px solid rgba(212, 175, 55, 0.25);
         }
       `}</style>
     </div>

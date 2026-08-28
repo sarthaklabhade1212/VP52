@@ -51,7 +51,6 @@ export default function MerchantBilling() {
     setBillItems(billItems.map((item, i) => i === index ? { ...item, quantity: newQty } : item));
   };
 
-  // Live Summary Calculation
   const totalBillAmount = billItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
   const eligibleAmount = billItems.reduce((acc, item) => acc + (item.reward_eligible ? item.price * item.quantity : 0), 0);
   const estimatedPoints = Math.floor(eligibleAmount * 0.10);
@@ -90,61 +89,61 @@ export default function MerchantBilling() {
   };
 
   return (
-    <div style={{ maxWidth: '900px' }}>
+    <div style={{ maxWidth: '900px', background: '#050505' }}>
       <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '24px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Receipt size={26} color="#10b981" /> Itemized Bill & Server Reward Calculator
+        <h2 style={{ fontSize: '24px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+          <Receipt size={26} color="#D4AF37" /> Itemized Bill & Server Reward Calculator
         </h2>
-        <p style={{ fontSize: '14px', color: '#64748b' }}>
+        <p style={{ fontSize: '14px', color: '#B8B8B8' }}>
           Combine reward-eligible and non-eligible items into a single bill. Points are calculated server-side.
         </p>
       </div>
 
       {billResult ? (
-        <div style={{ background: '#ffffff', borderRadius: '24px', padding: '28px', border: '2px solid #a7f3d0', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#dcfce7', color: '#15803d', padding: '6px 14px', borderRadius: '99px', fontWeight: 800, fontSize: '13px', marginBottom: '16px' }}>
-            <CheckCircle2 size={16} /> ✅ BILL GENERATED & POINTS AWARDED
+        <div style={{ background: '#111111', borderRadius: '24px', padding: '28px', border: '1px solid rgba(212, 175, 55, 0.3)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '6px 14px', borderRadius: '99px', fontWeight: 800, fontSize: '13px', marginBottom: '16px' }}>
+            <CheckCircle2 size={16} color="#F2D675" /> ✅ BILL GENERATED & POINTS AWARDED
           </div>
 
-          <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+          <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', marginBottom: '4px' }}>
             Bill #{billResult.bill_number}
           </h3>
-          <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>
-            Customer: <strong>{billResult.customer_name}</strong>
+          <p style={{ fontSize: '14px', color: '#B8B8B8', marginBottom: '20px' }}>
+            Customer: <strong style={{ color: '#FFFFFF' }}>{billResult.customer_name}</strong>
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Total Bill</span>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a' }}>₹{billResult.total_amount}</div>
+            <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>Total Bill</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#FFFFFF' }}>₹{billResult.total_amount}</div>
             </div>
 
-            <div style={{ background: '#ecfdf5', padding: '16px', borderRadius: '14px', border: '1px solid #a7f3d0' }}>
-              <span style={{ fontSize: '11px', color: '#059669', textTransform: 'uppercase', fontWeight: 700 }}>Eligible Subtotal</span>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#047857' }}>₹{billResult.eligible_amount}</div>
+            <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>Eligible Subtotal</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#F2D675' }}>₹{billResult.eligible_amount}</div>
             </div>
 
-            <div style={{ background: '#e0e7ff', padding: '16px', borderRadius: '14px', border: '1px solid #c7d2fe' }}>
-              <span style={{ fontSize: '11px', color: '#3730a3', textTransform: 'uppercase', fontWeight: 700 }}>Points Awarded</span>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#4f46e5' }}>+🪙 {billResult.points_awarded}</div>
+            <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>Points Awarded</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#D4AF37' }}>+🪙 {billResult.points_awarded}</div>
             </div>
           </div>
 
-          <button onClick={() => setBillResult(null)} className="btn-success" style={{ padding: '12px 24px' }}>
+          <button onClick={() => setBillResult(null)} className="btn-primary" style={{ padding: '12px 24px' }}>
             Create Another Bill
           </button>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px' }}>
           {/* Left Column: Bill Items Entry Table */}
-          <div style={{ background: '#ffffff', borderRadius: '20px', padding: '24px', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: '16px', color: '#0f172a', marginBottom: '16px' }}>Current Bill Items</h3>
+          <div style={{ background: '#111111', borderRadius: '20px', padding: '24px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+            <h3 style={{ fontSize: '16px', color: '#FFFFFF', marginBottom: '16px', fontWeight: 800 }}>Current Bill Items</h3>
 
-            {error && <div style={{ background: '#fef2f2', color: '#dc2626', padding: '10px', borderRadius: '10px', fontSize: '13px', marginBottom: '12px' }}>{error}</div>}
+            {error && <div style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px', borderRadius: '10px', fontSize: '13px', marginBottom: '12px' }}>{error}</div>}
 
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', marginBottom: '20px' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
+                <tr style={{ background: '#151515', borderBottom: '1px solid rgba(212, 175, 55, 0.15)', color: '#B8B8B8' }}>
                   <th style={{ padding: '8px' }}>Item</th>
                   <th style={{ padding: '8px' }}>Price</th>
                   <th style={{ padding: '8px' }}>Qty</th>
@@ -155,19 +154,19 @@ export default function MerchantBilling() {
               </thead>
               <tbody>
                 {billItems.map((item, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '10px 8px', fontWeight: 700 }}>{item.product_name}</td>
-                    <td style={{ padding: '10px 8px' }}>₹{item.price}</td>
+                  <tr key={idx} style={{ borderBottom: '1px solid rgba(212, 175, 55, 0.1)' }}>
+                    <td style={{ padding: '10px 8px', fontWeight: 700, color: '#FFFFFF' }}>{item.product_name}</td>
+                    <td style={{ padding: '10px 8px', color: '#B8B8B8' }}>₹{item.price}</td>
                     <td style={{ padding: '10px 8px' }}>
-                      <input type="number" min="1" value={item.quantity} onChange={(e) => handleQuantityChange(idx, e.target.value)} style={{ width: '45px', padding: '4px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                      <input type="number" min="1" value={item.quantity} onChange={(e) => handleQuantityChange(idx, e.target.value)} style={{ width: '45px', padding: '4px', borderRadius: '6px', border: '1px solid #303030', background: '#151515', color: '#FFFFFF' }} />
                     </td>
                     <td style={{ padding: '10px 8px' }}>
-                      {item.reward_eligible ? <span style={{ color: '#10b981', fontWeight: 700 }}>✅ Yes</span> : <span style={{ color: '#ef4444', fontWeight: 700 }}>🚫 No</span>}
+                      {item.reward_eligible ? <span style={{ color: '#F2D675', fontWeight: 700 }}>✅ Yes</span> : <span style={{ color: '#ef4444', fontWeight: 700 }}>🚫 No</span>}
                     </td>
-                    <td style={{ padding: '10px 8px', fontWeight: 800 }}>₹{item.price * item.quantity}</td>
+                    <td style={{ padding: '10px 8px', fontWeight: 800, color: '#FFFFFF' }}>₹{item.price * item.quantity}</td>
                     <td style={{ padding: '10px 8px' }}>
                       <button onClick={() => handleRemoveItem(idx)} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer' }}>
-                        <Trash2 size={14} />
+                        <Trash2 size={14} color="#ef4444" />
                       </button>
                     </td>
                   </tr>
@@ -176,8 +175,8 @@ export default function MerchantBilling() {
             </table>
 
             {/* Quick Catalog Item Selector */}
-            <div style={{ paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', display: 'block', marginBottom: '8px' }}>+ QUICK ADD FROM CATALOG</span>
+            <div style={{ paddingTop: '16px', borderTop: '1px solid rgba(212, 175, 55, 0.15)' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '8px' }}>+ QUICK ADD FROM CATALOG</span>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {products.map(p => (
                   <button key={p.id} onClick={() => handleAddItemFromCatalog(p)} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }}>
@@ -189,27 +188,27 @@ export default function MerchantBilling() {
           </div>
 
           {/* Right Column: Customer Info & Calculation Summary */}
-          <div style={{ background: '#ffffff', borderRadius: '20px', padding: '24px', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: '16px', color: '#0f172a', marginBottom: '16px' }}>Bill Summary</h3>
+          <div style={{ background: '#111111', borderRadius: '20px', padding: '24px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
+            <h3 style={{ fontSize: '16px', color: '#FFFFFF', marginBottom: '16px', fontWeight: 800 }}>Bill Summary</h3>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569', marginBottom: '4px', display: 'block' }}>Customer Mobile / Email</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', marginBottom: '4px', display: 'block' }}>Customer Mobile / Email</label>
               <input type="text" className="form-input" placeholder="customer@example.com" value={customerIdentifier} onChange={(e) => setCustomerIdentifier(e.target.value)} />
             </div>
 
-            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '14px', border: '1px solid #cbd5e1', marginBottom: '20px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Total Items Bill:</span> <strong>₹{totalBillAmount}</strong>
+            <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', marginBottom: '20px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#B8B8B8' }}>
+                <span>Total Items Bill:</span> <strong style={{ color: '#FFFFFF' }}>₹{totalBillAmount}</strong>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669', fontWeight: 700 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#F2D675', fontWeight: 700 }}>
                 <span>Reward Eligible Amount:</span> <strong>₹{eligibleAmount}</strong>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#4f46e5', fontWeight: 800, paddingTop: '6px', borderTop: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#D4AF37', fontWeight: 800, paddingTop: '6px', borderTop: '1px solid rgba(212, 175, 55, 0.15)' }}>
                 <span>Estimated Points Earned:</span> <strong>+🪙 {estimatedPoints} Pts</strong>
               </div>
             </div>
 
-            <button onClick={handleGenerateBill} disabled={loading} className="btn-success" style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}>
+            <button onClick={handleGenerateBill} disabled={loading} className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}>
               {loading ? 'Processing...' : 'Generate Bill & Award Points'}
             </button>
           </div>

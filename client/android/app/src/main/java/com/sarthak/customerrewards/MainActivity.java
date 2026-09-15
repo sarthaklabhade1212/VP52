@@ -25,22 +25,11 @@ public class MainActivity extends BridgeActivity
 
         if (webView != null) {
             WebSettings settings = webView.getSettings();
-
-            // LOCAL DEVELOPMENT: the dev build serves the app from http://localhost
-            // (see server.androidScheme in capacitor.config.json), so calls to the
-            // local backend at http://10.0.2.2:5000 are http -> http and are NOT
-            // mixed content. This override is kept only as a harmless safety net; it
-            // is a no-op for the http origin, and inert in a production https build
-            // (where the API is https).
             settings.setMixedContentMode(
                     WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             );
         }
 
-        // TEMPORARY DIAGNOSTIC (safe to ship; remove once verified): log ONLY the
-        // Capacitor scheme and the resolved WebView origin, so the INSTALLED APK can
-        // be confirmed to serve from http://localhost. This NEVER logs access tokens,
-        // ID tokens, JWTs, credential objects, or request/response bodies.
         Log.i("VIPSOrigin", "Capacitor androidScheme = " + getBridge().getScheme());
         if (webView != null) {
             webView.post(new Runnable() {
@@ -52,11 +41,15 @@ public class MainActivity extends BridgeActivity
         }
     }
 
-    // Required by @capgo/capacitor-social-login (v8.x): the Google authorization
-    // flow (used when scopes are requested) returns through Activity results.
-    // We forward those results into the SocialLogin plugin. Without this bridge
-    // the plugin rejects with:
-    //   "You CANNOT use scopes without modifying the main activity."
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (this.getBridge() != null && this.getBridge().getWebView() != null) {
+            WebSettings settings = this.getBridge().getWebView().getSettings();
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
+    }
+
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -77,9 +70,6 @@ public class MainActivity extends BridgeActivity
         }
     }
 
-    // Marker method required by ModifiedMainActivityForSocialLoginPlugin.
-    // Intentionally empty: its presence signals to the plugin that this
-    // Activity has been correctly wired for Google authorization results.
     @Override
     public void IHaveModifiedTheMainActivityForTheUseWithSocialLoginPlugin() {}
 }

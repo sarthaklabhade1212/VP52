@@ -39,66 +39,193 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return Math.round(R * c * 10) / 10;
 }
 
-// Helper to get reward setting with fallback
 function getRewardSetting(key, defaultValue) {
-  const row = db.prepare('SELECT value FROM reward_settings WHERE key = ?').get(key);
-  if (row) return row.value;
-  const legacyRow = db.prepare('SELECT value FROM admin_settings WHERE key = ?').get(key);
-  return legacyRow ? legacyRow.value : defaultValue;
+  try {
+    const row = db.prepare('SELECT value FROM reward_settings WHERE key = ?').get(key) ||
+                db.prepare('SELECT value FROM admin_settings WHERE key = ?').get(key);
+    return row ? row.value : defaultValue;
+  } catch (e) {
+    return defaultValue;
+  }
 }
 
-// Auto-Expiry Helper: Marks expired coin lots as EXPIRED
-function autoExpireCoinLots(userId) {
+// VP52 12-Tier Coin Hierarchy
+const VP52_TIERS = [
+  'Bronze',
+  'Silver',
+  'Gold',
+  'Platinum',
+  'Diamond',
+  'Titanium',
+  'Ruby',
+  'Crown',
+  'Royal',
+  'Elite',
+  'Legend',
+  'VIP'
+];
+
+function getTierValues() {
+  const defaults = {
+    Bronze: 1,
+    Silver: 2,
+    Gold: 4,
+    Platinum: 8,
+    Diamond: 16,
+    Titanium: 32,
+    Ruby: 64,
+    Crown: 128,
+    Royal: 256,
+    Elite: 512,
+    Legend: 1024,
+    VIP: 2048
+  };
   try {
-    const expiredLots = db.prepare(`
-      SELECT id, coins_remaining FROM coin_lots
-      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND datetime(expires_at) <= datetime('now')
+    const rows = db.prepare("SELECT key, value FROM admin_settings WHERE key LIKE 'coin_value_%'").all();
+    rows.forEach(r => {
+      const tierName = r.key.replace('coin_value_', '');
+      const capitalized = tierName.charAt(0).toUpperCase() + tierName.slice(1).toLowerCase();
+      const val = parseInt(r.value, 10);
+      if (VP52_TIERS.includes(capitalized) && !isNaN(val) && val > 0) {
+        defaults[capitalized] = val;
+      }
+    });
+  } catch (e) {}
+  return defaults;
+}
+
+// Automatic Tier Transition Engine (Deterministic 12-Tier Aging Progression)
+function reconcileTierTransitions(userId) {
+  try {
+    const maturedLots = db.prepare(`
+      SELECT * FROM coin_lots
+      WHERE user_id = ?
+        AND status IN ('ACTIVE', 'PARTIALLY_USED')
+        AND coins_remaining > 0
+        AND tier != 'VIP'
+        AND (
+          (next_transition_at IS NOT NULL AND datetime(next_transition_at) <= datetime('now'))
+          OR
+          (next_transition_at IS NULL AND datetime(expires_at) <= datetime('now'))
+        )
     `).all(userId);
 
-    if (expiredLots.length > 0) {
-      db.prepare(`
-        UPDATE coin_lots
-        SET status = 'EXPIRED'
-        WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND datetime(expires_at) <= datetime('now')
-      `).run(userId);
+    if (!maturedLots || maturedLots.length === 0) return;
 
-      // Recalculate active wallet balance
-      const activeSumRow = db.prepare(`
-        SELECT SUM(coins_remaining) AS active_coins FROM coin_lots
-        WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND datetime(expires_at) > datetime('now')
-      `).get(userId);
+    maturedLots.forEach(lot => {
+      const currentTier = lot.tier || 'Bronze';
+      const currentTierIndex = VP52_TIERS.indexOf(currentTier);
+      if (currentTierIndex === -1 || currentTierIndex >= VP52_TIERS.length - 1) return; // VIP doesn't convert
 
-      const activeCoins = activeSumRow ? (activeSumRow.active_coins || 0) : 0;
-      db.prepare('UPDATE wallets SET balance = ? WHERE user_id = ?').run(activeCoins, userId);
-    }
+      const nextTier = VP52_TIERS[currentTierIndex + 1];
+      const remaining = lot.coins_remaining;
+
+      // Deterministic integer-safe conversion formula:
+      // Bronze -> Elite (indexes 0 to 9): 50% conversion -> Math.floor(remaining / 2)
+      // Legend -> VIP (index 10 -> 11): 5 Legend = 1 VIP -> Math.floor(remaining / 5)
+      let convertedAmount = 0;
+      if (currentTierIndex === 10) { // Legend -> VIP
+        convertedAmount = Math.floor(remaining / 5);
+      } else {
+        convertedAmount = Math.floor(remaining / 2);
+      }
+
+      if (convertedAmount > 0) {
+        const nextTransitionStr = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
+
+        db.prepare(`
+          UPDATE coin_lots
+          SET tier = ?,
+              coins_remaining = ?,
+              original_amount = ?,
+              status = 'ACTIVE',
+              last_transition_at = CURRENT_TIMESTAMP,
+              next_transition_at = ?,
+              expires_at = ?
+          WHERE id = ?
+        `).run(nextTier, convertedAmount, convertedAmount, nextTransitionStr, nextTransitionStr, lot.id);
+
+        db.prepare(`
+          INSERT INTO point_ledger (user_id, transaction_id, type, points, previous_balance, new_balance, reason)
+          VALUES (?, ?, 'TIER_TRANSITION', ?, ?, ?, ?)
+        `).run(
+          userId,
+          `TIER-TRANSITION-${lot.id}-${Date.now()}`,
+          convertedAmount,
+          remaining,
+          convertedAmount,
+          `VP52 Matured Lot Conversion: ${remaining} ${currentTier} -> ${convertedAmount} ${nextTier}`
+        );
+      } else {
+        // Under conversion threshold -> Mark lot as EXPIRED
+        db.prepare(`
+          UPDATE coin_lots
+          SET status = 'EXPIRED', coins_remaining = 0
+          WHERE id = ?
+        `).run(lot.id);
+      }
+    });
+
+    // Recalculate active wallet sum
+    const totalRow = db.prepare(`
+      SELECT SUM(coins_remaining) AS total FROM coin_lots
+      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED')
+    `).get(userId);
+    const newBal = totalRow ? (totalRow.total || 0) : 0;
+    db.prepare('UPDATE wallets SET balance = ? WHERE user_id = ?').run(newBal, userId);
   } catch (e) {
-    console.error('Auto expire coin lots error:', e.message);
+    console.error('Tier transition reconciliation error:', e.message);
   }
 }
 
-// Get Available Non-Expired Coins Balance
-function getAvailableCoins(userId) {
-  autoExpireCoinLots(userId);
-  const row = db.prepare(`
-    SELECT SUM(coins_remaining) AS active_coins FROM coin_lots
-    WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND datetime(expires_at) > datetime('now')
-  `).get(userId);
-  if (row && row.active_coins !== null) {
-    return row.active_coins;
-  }
-  // Fallback to wallet balance if no lots exist yet
-  const w = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(userId);
-  return w ? w.balance : 0;
-}
-
-// 1. Get Wallet Balance & Transaction Summary (with Expiry Breakdown)
+// 1. Get Wallet Balance & Multi-Tier Summary
 router.get('/wallet', (req, res) => {
   try {
     const userId = req.user.id;
-    autoExpireCoinLots(userId);
+    reconcileTierTransitions(userId);
 
     const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0, total_redeemed: 0 };
-    const availableCoins = getAvailableCoins(userId);
+
+    const tierValues = getTierValues();
+    const tierBreakdown = {};
+    VP52_TIERS.forEach(t => {
+      tierBreakdown[t] = {
+        tier: t,
+        coins: 0,
+        value_inr: 0,
+        unit_value: tierValues[t] || 1,
+        lots_count: 0
+      };
+    });
+
+    const activeLots = db.prepare(`
+      SELECT id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, earned_at, expires_at, next_transition_at, status,
+             CAST((julianday(COALESCE(next_transition_at, expires_at)) - julianday('now')) * 24 AS INTEGER) AS hours_until_transition
+      FROM coin_lots
+      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND coins_remaining > 0
+      ORDER BY earned_at ASC
+    `).all(userId);
+
+    let totalAvailableCoins = 0;
+    let totalValueInr = 0;
+
+    activeLots.forEach(lot => {
+      const lotTier = VP52_TIERS.includes(lot.tier) ? lot.tier : 'Bronze';
+      tierBreakdown[lotTier].coins += lot.coins_remaining;
+      tierBreakdown[lotTier].value_inr += lot.coins_remaining * (tierValues[lotTier] || 1);
+      tierBreakdown[lotTier].lots_count += 1;
+
+      totalAvailableCoins += lot.coins_remaining;
+      totalValueInr += lot.coins_remaining * (tierValues[lotTier] || 1);
+    });
+
+    const tierSummary = VP52_TIERS.map(t => ({
+      tier: t,
+      coins: tierBreakdown[t].coins,
+      value_inr: tierBreakdown[t].value_inr,
+      unit_value: tierBreakdown[t].unit_value,
+      lots_count: tierBreakdown[t].lots_count
+    }));
 
     const expiredCoinsRow = db.prepare(`
       SELECT SUM(coins_remaining) AS total_expired FROM coin_lots
@@ -118,23 +245,6 @@ router.get('/wallet', (req, res) => {
     `).get(userId);
     const earnedThisMonth = earnedThisMonthRow ? (earnedThisMonthRow.total || 0) : 0;
 
-    // Expiring soon lots (7 days, 3 days, 1 day)
-    const expiringSoonLots = db.prepare(`
-      SELECT id, coins_remaining, expires_at,
-             CAST((julianday(expires_at) - julianday('now')) * 24 AS INTEGER) AS hours_left
-      FROM coin_lots
-      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND datetime(expires_at) > datetime('now')
-        AND datetime(expires_at) <= datetime('now', '+7 days')
-      ORDER BY expires_at ASC
-    `).all(userId);
-
-    const expire3DaysRow = db.prepare(`
-      SELECT SUM(coins_remaining) AS total FROM coin_lots
-      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND datetime(expires_at) > datetime('now')
-        AND datetime(expires_at) <= datetime('now', '+3 days')
-    `).get(userId);
-    const expire3Days = expire3DaysRow ? (expire3DaysRow.total || 0) : 0;
-
     const rewardHistory = db.prepare(`
       SELECT id, activity_type, points, created_at
       FROM reward_transactions
@@ -144,7 +254,7 @@ router.get('/wallet', (req, res) => {
     `).all(userId);
 
     const redemptionHistory = db.prepare(`
-      SELECT r.id, r.redemption_code, r.points_deducted, r.discount_percent, r.max_discount_inr, r.status, r.created_at, r.redeemed_at,
+      SELECT r.id, r.redemption_code, r.points_deducted, r.discount_percent, r.max_discount_inr, r.status, r.created_at, r.redeemed_at, r.coin_tier,
              s.name AS shop_name, s.category AS shop_category, o.title AS offer_title
       FROM redemptions r
       JOIN shops s ON r.shop_id = s.id
@@ -158,14 +268,15 @@ router.get('/wallet', (req, res) => {
       success: true,
       wallet: {
         ...wallet,
-        available_coins: availableCoins,
-        discount_value_inr: availableCoins, // 1 Coin = ₹1
+        available_coins: totalAvailableCoins,
+        discount_value_inr: totalValueInr,
         total_expired: totalExpired,
         earned_today: earnedToday,
         earned_this_month: earnedThisMonth,
-        expiring_soon_3_days: expire3Days
+        tier_breakdown: tierBreakdown
       },
-      expiringSoonLots,
+      tierSummary,
+      activeLots,
       rewardHistory,
       redemptionHistory
     });
@@ -200,7 +311,7 @@ router.post('/watch-ad', (req, res) => {
 
     console.log(`[Ads] Customer ${userId} watch-ad request: watched ${watchDurationSeconds}/${adDurationSec}s -> Awarding ${pointsAwarded} points.`);
 
-    // Atomic transaction for awarding points + point_ledger
+    // Atomic transaction for awarding points + point_ledger + coin_lots (Bronze Tier)
     const rewardTx = db.transaction(() => {
       const walletBefore = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0 };
       const prevBal = walletBefore.balance;
@@ -220,6 +331,13 @@ router.post('/watch-ad', (req, res) => {
       `).run(userId, pointsAwarded);
 
       const txId = `AD-REWARD-${result.lastInsertRowid}`;
+      const expiresAt = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
+
+      // Insert into coin_lots (Bronze Tier)
+      db.prepare(`
+        INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, next_transition_at, expires_at, status)
+        VALUES (?, ?, 'AD_REWARD', ?, ?, 'Bronze', ?, ?, ?, 'ACTIVE')
+      `).run(userId, txId, pointsAwarded, pointsAwarded, pointsAwarded, expiresAt, expiresAt);
 
       // Insert into point_ledger
       db.prepare(`
@@ -292,15 +410,10 @@ router.get('/shops', (req, res) => {
   try {
     const { search, category, maxDistance, lat, lng } = req.query;
 
-    // Customer location is OPTIONAL and never persisted. It is used only to compute
-    // and sort by distance and to apply the radius filter. Distance is ALWAYS
-    // computed server-side from stored shop coordinates; any client-supplied
-    // distance (e.g. a spoofed distance_km query param) is ignored entirely.
     const hasUserLocation = isValidCoord(lat, lng);
     const userLat = hasUserLocation ? Number(lat) : null;
     const userLng = hasUserLocation ? Number(lng) : null;
 
-    // Strict Discoverability: ONLY APPROVED AND ACTIVE SHOPS
     let query = `
       SELECT id, shop_code, name, category, description, address, phone, image_url, status, verification_status, latitude, longitude, rating
       FROM shops
@@ -323,13 +436,8 @@ router.get('/shops', (req, res) => {
     query += ` ORDER BY name ASC`;
 
     let shops = db.prepare(query).all(...params);
-
-    // Location-verification gate: a shop is shown to customers ONLY if it has valid
-    // coordinates. Legacy shops with missing/invalid coordinates stay in the DB (an
-    // admin can correct them) but never appear in customer results until fixed.
     shops = shops.filter(s => isValidCoord(s.latitude, s.longitude));
 
-    // Attach server-computed distance (null when the customer has not shared location).
     shops = shops.map(s => ({
       ...s,
       distance_km: hasUserLocation ? calculateDistance(userLat, userLng, s.latitude, s.longitude) : null,
@@ -337,14 +445,12 @@ router.get('/shops', (req, res) => {
     }));
 
     if (hasUserLocation) {
-      // Radius filter (server-authoritative). 'all' or absent => no distance limit.
       if (maxDistance && maxDistance !== 'all') {
         const maxDistKm = parseFloat(maxDistance);
         if (Number.isFinite(maxDistKm)) {
           shops = shops.filter(s => s.distance_km !== null && s.distance_km <= maxDistKm);
         }
       }
-      // Sort nearest -> farthest (unknown distances, if any, sink to the end).
       shops.sort((a, b) => {
         if (a.distance_km === null) return 1;
         if (b.distance_km === null) return -1;
@@ -353,7 +459,7 @@ router.get('/shops', (req, res) => {
     }
 
     const offers = db.prepare(`
-      SELECT o.id, o.shop_id, o.title, o.discount_percent, o.required_points, o.max_discount_inr, o.valid_until, o.status,
+      SELECT o.id, o.shop_id, o.title, o.discount_percent, o.tier_discounts, o.required_points, o.max_discount_inr, o.valid_until, o.status,
              s.name AS shop_name, s.category AS shop_category, s.image_url AS shop_image, s.address AS shop_address
       FROM offers o
       JOIN shops s ON o.shop_id = s.id
@@ -372,11 +478,13 @@ router.get('/shops', (req, res) => {
   }
 });
 
-// 4. Redeem Offer (Deduct Points & Generate Unique Redemption QR Code)
+// 4. Redeem Offer (Deduct Coins from Selected Tier & Generate Unique Redemption QR Code)
 router.post('/redeem', (req, res) => {
   try {
     const userId = req.user.id;
-    const { offer_id } = req.body;
+    const { offer_id, selected_tier } = req.body;
+
+    const coinTier = (selected_tier && VP52_TIERS.includes(selected_tier)) ? selected_tier : 'Bronze';
 
     if (!offer_id) {
       return res.status(400).json({ success: false, error: 'Offer ID is required' });
@@ -393,11 +501,33 @@ router.post('/redeem', (req, res) => {
       return res.status(404).json({ success: false, error: 'Offer is inactive or unavailable' });
     }
 
-    const wallet = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(userId);
-    if (!wallet || wallet.balance < offer.required_points) {
+    // Determine applicable discount percentage for selected_tier
+    let applicableDiscount = offer.discount_percent;
+    if (offer.tier_discounts) {
+      try {
+        const parsedDiscounts = JSON.parse(offer.tier_discounts);
+        if (parsedDiscounts && parsedDiscounts[coinTier] !== undefined) {
+          applicableDiscount = parseInt(parsedDiscounts[coinTier], 10);
+        }
+      } catch (e) {}
+    }
+
+    // Reconcile tier transitions before checking balance
+    reconcileTierTransitions(userId);
+
+    // Sum available coins for user in selected_tier
+    const tierCoinsRow = db.prepare(`
+      SELECT SUM(coins_remaining) AS total FROM coin_lots
+      WHERE user_id = ? AND tier = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND coins_remaining > 0
+    `).get(userId, coinTier);
+
+    const availableTierCoins = tierCoinsRow ? (tierCoinsRow.total || 0) : 0;
+    const requiredCoins = offer.required_points || 100;
+
+    if (availableTierCoins < requiredCoins) {
       return res.status(400).json({
         success: false,
-        error: `Insufficient point balance. You need ${offer.required_points} points, but currently have ${wallet ? wallet.balance : 0} points.`
+        error: `Insufficient ${coinTier} coin balance. You need ${requiredCoins} ${coinTier} coins, but currently have ${availableTierCoins} ${coinTier} coins.`
       });
     }
 
@@ -411,25 +541,47 @@ router.post('/redeem', (req, res) => {
     }
 
     const redeemTx = db.transaction(() => {
+      // Deduct requiredCoins from coin_lots of selected_tier in FIFO order (oldest earned_at first)
+      const activeLots = db.prepare(`
+        SELECT id, coins_remaining FROM coin_lots
+        WHERE user_id = ? AND tier = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND coins_remaining > 0
+        ORDER BY earned_at ASC
+      `).all(userId, coinTier);
+
+      let remainingToDeduct = requiredCoins;
+      for (const lot of activeLots) {
+        if (remainingToDeduct <= 0) break;
+        if (lot.coins_remaining <= remainingToDeduct) {
+          remainingToDeduct -= lot.coins_remaining;
+          db.prepare("UPDATE coin_lots SET coins_remaining = 0, status = 'USED' WHERE id = ?").run(lot.id);
+        } else {
+          const newRem = lot.coins_remaining - remainingToDeduct;
+          remainingToDeduct = 0;
+          db.prepare("UPDATE coin_lots SET coins_remaining = ?, status = 'PARTIALLY_USED' WHERE id = ?").run(newRem, lot.id);
+        }
+      }
+
+      // Update aggregate wallet balance
       db.prepare(`
         UPDATE wallets
         SET balance = balance - ?,
             total_redeemed = total_redeemed + ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ? AND balance >= ?
-      `).run(offer.required_points, offer.required_points, userId, offer.required_points);
+      `).run(requiredCoins, requiredCoins, userId, requiredCoins);
 
       const result = db.prepare(`
-        INSERT INTO redemptions (redemption_code, user_id, offer_id, shop_id, points_deducted, discount_percent, max_discount_inr, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
+        INSERT INTO redemptions (redemption_code, user_id, offer_id, shop_id, points_deducted, discount_percent, max_discount_inr, status, coin_tier)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?)
       `).run(
         redemptionCode,
         userId,
         offer.id,
         offer.shop_id,
-        offer.required_points,
-        offer.discount_percent,
-        offer.max_discount_inr
+        requiredCoins,
+        applicableDiscount,
+        offer.max_discount_inr,
+        coinTier
       );
 
       const updatedWallet = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(userId);
@@ -445,16 +597,17 @@ router.post('/redeem', (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Discount Offer Redeemed Successfully!',
+      message: `${coinTier} Discount Offer Redeemed Successfully!`,
       redemption: {
         id: result.redemptionId,
         redemption_code: result.redemptionCode,
         offer_title: offer.title,
         shop_name: offer.shop_name,
         shop_category: offer.shop_category,
-        discount_percent: offer.discount_percent,
+        discount_percent: applicableDiscount,
         max_discount_inr: offer.max_discount_inr,
-        points_deducted: offer.required_points,
+        points_deducted: requiredCoins,
+        coin_tier: coinTier,
         valid_until: offer.valid_until,
         status: 'ACTIVE'
       },
@@ -773,9 +926,9 @@ router.post('/coin-session/complete', (req, res) => {
       const expiresAt = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
 
       db.prepare(`
-        INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, expires_at, status)
-        VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, ?, 'ACTIVE')
-      `).run(userId, txId, expiresAt);
+        INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, next_transition_at, expires_at, status)
+        VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, 'Bronze', 100, ?, ?, 'ACTIVE')
+      `).run(userId, txId, expiresAt, expiresAt);
 
       const walletBefore = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0 };
       const prevBal = walletBefore.balance;

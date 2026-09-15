@@ -66,5 +66,23 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>Google Sign-In</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.88178430326-d8h97fh3g3ofhg9t4hl0ol7oebik3ugl</string>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			</array>
+		</dict>
+	</array>
+	<key>GIDClientID</key>
+	<string>88178430326-d8h97fh3g3ofhg9t4hl0ol7oebik3ugl.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>88178430326-d8h97fh3g3ofhg9t4hl0ol7oebik3ugl.apps.googleusercontent.com</string>
 </dict>
 </plist>

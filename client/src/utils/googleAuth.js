@@ -16,12 +16,13 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 
 const SocialLogin = registerPlugin('SocialLogin');
 
-const WEB_CLIENT_ID = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '';
+const WEB_CLIENT_ID = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID) || '';
+const IOS_CLIENT_ID = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_GOOGLE_IOS_CLIENT_ID) || '';
 
 let initialized = false;
 
 // Stable error codes the UI maps to translated messages.
-//   'not_configured' -> VITE_GOOGLE_WEB_CLIENT_ID missing
+//   'not_configured' -> VITE_GOOGLE_WEB_CLIENT_ID / VITE_GOOGLE_IOS_CLIENT_ID missing
 //   'unavailable'    -> not the native app / plugin not installed
 //   'cancelled'      -> user dismissed the Google sheet
 //   'failed'         -> anything else
@@ -40,7 +41,8 @@ function describe(err) {
 function looksCancelled(err) {
   const s = describe(err);
   return s.includes('cancel') || s.includes('canceled') || s.includes('closed') ||
-         s.includes('dismiss') || s.includes('no credential');
+         s.includes('dismiss') || s.includes('no credential') || s.includes('user_cancelled') ||
+         s.includes('-5');
 }
 
 function looksUnavailable(err) {
@@ -50,12 +52,54 @@ function looksUnavailable(err) {
 
 async function ensureInitialized() {
   if (initialized) return;
-  await SocialLogin.initialize({ google: { webClientId: WEB_CLIENT_ID } });
+  const effectiveIosClientId = IOS_CLIENT_ID || WEB_CLIENT_ID;
+  await SocialLogin.initialize({
+    google: {
+      webClientId: WEB_CLIENT_ID,
+      iOSClientId: effectiveIosClientId,
+      iOSServerClientId: WEB_CLIENT_ID,
+      mode: 'online'
+    }
+  });
   initialized = true;
 }
 
-function isNative() {
-  return !!(Capacitor && typeof Capacitor.isNativePlatform === 'function' && Capacitor.isNativePlatform());
+/**
+ * Authoritative platform detection distinguishing:
+ * - 'android': Capacitor Android application
+ * - 'ios': Capacitor iOS application
+ * - 'web': Standard web browser
+ */
+export function getAppPlatform() {
+  if (typeof window === 'undefined') return 'web';
+
+  // 1. Primary check: official Capacitor runtime platform
+  if (Capacitor && typeof Capacitor.getPlatform === 'function') {
+    const p = Capacitor.getPlatform();
+    if (p === 'android' || p === 'ios') return p;
+  }
+
+  // 2. Secondary check: window.Capacitor bridge object
+  if (typeof window.Capacitor !== 'undefined' && typeof window.Capacitor.getPlatform === 'function') {
+    const p = window.Capacitor.getPlatform();
+    if (p === 'android' || p === 'ios') return p;
+  }
+
+  // 3. Fallback: native webview protocols
+  if (window.location && (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:')) {
+    return 'android';
+  }
+
+  return 'web';
+}
+
+/**
+ * Returns true only when running inside a native mobile container (Android or iOS).
+ * Returns false on web browsers.
+ */
+export function isNativeApp() {
+  const platform = getAppPlatform();
+  return platform === 'android' || platform === 'ios';
 }
 
 /**
@@ -63,10 +107,13 @@ function isNative() {
  * (to be verified by the backend). Throws GoogleAuthError with a stable `.code`.
  */
 export async function signInWithGoogle() {
-  if (!WEB_CLIENT_ID) {
+  const platform = getAppPlatform();
+  if (platform === 'ios' && !IOS_CLIENT_ID && !WEB_CLIENT_ID) {
+    throw new GoogleAuthError('not_configured', 'Google client id is not configured');
+  } else if (platform !== 'ios' && !WEB_CLIENT_ID) {
     throw new GoogleAuthError('not_configured', 'Google web client id is not configured');
   }
-  if (!isNative()) {
+  if (!isNativeApp()) {
     // The native plugin backs this flow only in the mobile app build.
     throw new GoogleAuthError('unavailable', 'Google sign-in is only available in the mobile app');
   }

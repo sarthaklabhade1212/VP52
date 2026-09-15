@@ -91,6 +91,7 @@ export const translations = {
     googleAccountCreation: "Setting up your account...",
     googleNetworkError: "Network error during Google sign-in. Check your connection.",
     googleUnavailable: "Google sign-in is only available in the mobile app.",
+    googleMobileOnlyNotice: "Google Sign-In is available in the VP52 mobile app.",
     googleNotConfigured: "Google sign-in is not configured yet.",
 
     // ---- Shop / merchant login ----
@@ -331,6 +332,7 @@ export const translations = {
     googleAccountCreation: "आपका खाता सेट किया जा रहा है...",
     googleNetworkError: "Google साइन-इन के दौरान नेटवर्क त्रुटि। कृपया अपना कनेक्शन जांचें।",
     googleUnavailable: "Google साइन-इन केवल मोबाइल ऐप में उपलब्ध है।",
+    googleMobileOnlyNotice: "Google साइन-इन VP52 मोबाइल ऐप में उपलब्ध है।",
     googleNotConfigured: "Google साइन-इन अभी कॉन्फ़िगर नहीं किया गया है।",
 
     // ---- Shop / merchant login ----
@@ -571,6 +573,7 @@ export const translations = {
     googleAccountCreation: "तुमचे खाते सेट करत आहे...",
     googleNetworkError: "Google साइन-इन दरम्यान नेटवर्क त्रुटी. कृपया तुमचे कनेक्शन तपासा.",
     googleUnavailable: "Google साइन-इन फक्त मोबाइल ॲपमध्ये उपलब्ध आहे.",
+    googleMobileOnlyNotice: "Google साइन-इन VP52 मोबाइल ॲपमध्ये उपलब्ध आहे.",
     googleNotConfigured: "Google साइन-इन अद्याप कॉन्फिगर केलेले नाही.",
 
     // ---- Shop / merchant login ----

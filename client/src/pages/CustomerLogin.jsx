@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/I18nContext';
 import { APP_NAME } from '../config/brand';
 import { Lock, Mail, User, Phone, ArrowRight, Store } from 'lucide-react';
-import { signInWithGoogle } from '../utils/googleAuth';
+import { signInWithGoogle, isNativeApp } from '../utils/googleAuth';
 import vp52Logo from '../assets/vp52-logo.png';
 
 const GoogleGlyph = () => (
@@ -32,6 +32,7 @@ export default function CustomerLogin() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(null);
+  const isNative = isNativeApp();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,7 +54,7 @@ export default function CustomerLogin() {
   };
 
   const handleGoogleLogin = async () => {
-    if (loading || googleLoading) return;
+    if (!isNative || loading || googleLoading) return;
     setError(null);
     setGoogleLoading(true);
     try {
@@ -66,7 +67,9 @@ export default function CustomerLogin() {
       } else if (code === 'not_configured') {
         setError(t('googleNotConfigured'));
       } else if (code === 'unavailable') {
-        setError(t('googleUnavailable'));
+        if (isNative) {
+          setError(t('googleUnavailable'));
+        }
       } else if (err && /network/i.test(err.message || '')) {
         setError(t('googleNetworkError'));
       } else {
@@ -192,30 +195,67 @@ export default function CustomerLogin() {
       </div>
 
       {/* Continue with Google */}
-      <button
-        type="button"
-        onClick={handleGoogleLogin}
-        disabled={googleLoading || loading}
-        style={{
-          width: '100%',
-          padding: '14px',
-          fontSize: '15px',
-          fontWeight: 700,
-          color: '#1f2937',
-          background: '#ffffff',
-          border: '1px solid #d1d5db',
-          borderRadius: '12px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '10px',
-          cursor: (googleLoading || loading) ? 'not-allowed' : 'pointer',
-          opacity: (googleLoading || loading) ? 0.7 : 1
-        }}
-      >
-        <GoogleGlyph />
-        {googleLoading ? t('googleSigningIn') : t('continueWithGoogle')}
-      </button>
+      {isNative ? (
+        <button
+          type="button"
+          onClick={handleGoogleLogin}
+          disabled={googleLoading || loading}
+          style={{
+            width: '100%',
+            padding: '14px',
+            fontSize: '15px',
+            fontWeight: 700,
+            color: '#1f2937',
+            background: '#ffffff',
+            border: '1px solid #d1d5db',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            cursor: (googleLoading || loading) ? 'not-allowed' : 'pointer',
+            opacity: (googleLoading || loading) ? 0.7 : 1
+          }}
+        >
+          <GoogleGlyph />
+          {googleLoading ? t('googleSigningIn') : t('continueWithGoogle')}
+        </button>
+      ) : (
+        <div>
+          <button
+            type="button"
+            disabled
+            style={{
+              width: '100%',
+              padding: '14px',
+              fontSize: '15px',
+              fontWeight: 700,
+              color: '#888888',
+              background: '#151515',
+              border: '1px solid rgba(212, 175, 55, 0.2)',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              cursor: 'not-allowed',
+              opacity: 0.75
+            }}
+          >
+            <GoogleGlyph />
+            {t('continueWithGoogle')}
+          </button>
+          <p style={{
+            fontSize: '12px',
+            color: '#888888',
+            marginTop: '8px',
+            marginBottom: 0,
+            textAlign: 'center'
+          }}>
+            ℹ️ {t('googleMobileOnlyNotice')}
+          </p>
+        </div>
+      )}
 
       <div style={{ textAlign: 'center', marginTop: '20px' }}>
         <button

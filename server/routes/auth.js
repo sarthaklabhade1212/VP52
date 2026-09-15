@@ -150,7 +150,11 @@ router.post('/customer/google', async (req, res) => {
     let payload;
     try {
       const client = new OAuth2Client(CLIENT_ID);
-      const ticket = await client.verifyIdToken({ idToken, audience: CLIENT_ID });
+      const audiences = [CLIENT_ID, process.env.GOOGLE_IOS_CLIENT_ID].filter(Boolean);
+      const ticket = await client.verifyIdToken({
+        idToken,
+        audience: audiences.length === 1 ? audiences[0] : audiences
+      });
       payload = ticket.getPayload();
     } catch (e) {
       return res.status(401).json({ success: false, error: 'Invalid or unverifiable Google credential' });

@@ -335,6 +335,20 @@ function initDatabase() {
     if (!sessionColumns.includes('session_number_for_day')) db.exec("ALTER TABLE reward_sessions ADD COLUMN session_number_for_day INTEGER DEFAULT 1;");
     if (!sessionColumns.includes('ads_watched')) db.exec("ALTER TABLE reward_sessions ADD COLUMN ads_watched INTEGER DEFAULT 0;");
     if (!sessionColumns.includes('coins_earned')) db.exec("ALTER TABLE reward_sessions ADD COLUMN coins_earned INTEGER DEFAULT 0;");
+
+    // VP52 Multi-Tier Coin System Additive Migrations
+    const coinLotColumns = db.prepare("PRAGMA table_info(coin_lots)").all().map(c => c.name);
+    if (!coinLotColumns.includes('tier')) db.exec("ALTER TABLE coin_lots ADD COLUMN tier TEXT DEFAULT 'Bronze';");
+    if (!coinLotColumns.includes('original_amount')) db.exec("ALTER TABLE coin_lots ADD COLUMN original_amount INTEGER;");
+    if (!coinLotColumns.includes('next_transition_at')) db.exec("ALTER TABLE coin_lots ADD COLUMN next_transition_at DATETIME;");
+    if (!coinLotColumns.includes('last_transition_at')) db.exec("ALTER TABLE coin_lots ADD COLUMN last_transition_at DATETIME;");
+
+    const offerColumns = db.prepare("PRAGMA table_info(offers)").all().map(c => c.name);
+    if (!offerColumns.includes('tier_discounts')) db.exec("ALTER TABLE offers ADD COLUMN tier_discounts TEXT;");
+
+    const redemptionColumns = db.prepare("PRAGMA table_info(redemptions)").all().map(c => c.name);
+    if (!redemptionColumns.includes('coin_tier')) db.exec("ALTER TABLE redemptions ADD COLUMN coin_tier TEXT DEFAULT 'Bronze';");
+    if (!redemptionColumns.includes('coin_lot_id')) db.exec("ALTER TABLE redemptions ADD COLUMN coin_lot_id INTEGER;");
   } catch (e) {
     console.error('Migration error:', e.message);
   }

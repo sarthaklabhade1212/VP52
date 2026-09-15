@@ -267,6 +267,7 @@ router.post('/verify-qr', (req, res) => {
         points_used: redemption.points_deducted,
         max_discount_inr: redemption.max_discount_inr,
         valid_until: redemption.valid_until,
+        coin_tier: redemption.coin_tier || 'Bronze',
         status: 'ACTIVE'
       }
     });
@@ -338,7 +339,7 @@ router.post('/approve-redeem', (req, res) => {
 
     return res.json({
       success: true,
-      message: `✅ DISCOUNT APPROVED! ${updated.discount_percent}% discount (Max ₹${updated.max_discount_inr}) can be given to ${updated.customer_name}.`,
+      message: `✅ DISCOUNT APPROVED! ${updated.discount_percent}% discount (${updated.coin_tier || 'Bronze'} Tier) can be given to ${updated.customer_name}.`,
       redemption: updated
     });
   } catch (error) {
@@ -347,7 +348,40 @@ router.post('/approve-redeem', (req, res) => {
   }
 });
 
-// 4. Get Active Offers for Current Shop
+// 4. Create Merchant Offer with Multi-Tier Discounts
+router.post('/offers', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const { title, discount_percent, required_points, max_discount_inr, valid_until, tier_discounts } = req.body;
+
+    if (!title || !discount_percent || !max_discount_inr || !valid_until) {
+      return res.status(400).json({ success: false, error: 'Title, default discount %, max discount in INR, and valid until date are required' });
+    }
+
+    const tierDiscountsJson = typeof tier_discounts === 'object' ? JSON.stringify(tier_discounts) : tier_discounts;
+
+    const result = db.prepare(`
+      INSERT INTO offers (shop_id, title, discount_percent, required_points, max_discount_inr, valid_until, tier_discounts, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+    `).run(
+      shopId,
+      title.trim(),
+      parseInt(discount_percent, 10),
+      parseInt(required_points || 0, 10),
+      parseInt(max_discount_inr, 10),
+      valid_until,
+      tierDiscountsJson || null
+    );
+
+    const newOffer = db.prepare('SELECT * FROM offers WHERE id = ?').get(result.lastInsertRowid);
+    return res.status(201).json({ success: true, offer: newOffer });
+  } catch (error) {
+    console.error('Create offer error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create offer' });
+  }
+});
+
+// 5. Get Active Offers for Current Shop
 router.get('/offers', (req, res) => {
   try {
     const shopId = req.user.shop_id || req.user.id;

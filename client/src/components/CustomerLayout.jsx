@@ -6,6 +6,7 @@ import { useI18n } from '../i18n/I18nContext';
 import useChatUnread from '../hooks/useChatUnread';
 import LanguageSwitcher from './LanguageSwitcher';
 import { APP_NAME } from '../config/brand';
+import vp52Logo from '../assets/vp52-logo.png';
 
 export default function CustomerLayout() {
   const { user } = useAuth();
@@ -27,21 +28,17 @@ export default function CustomerLayout() {
         zIndex: 40
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#050505',
-            fontWeight: 800,
-            fontSize: '18px',
-            boxShadow: '0 4px 12px rgba(212, 175, 55, 0.25)'
-          }}>
-            {APP_NAME.charAt(0)}
-          </div>
+          <img
+            src={vp52Logo}
+            alt="VP52"
+            style={{
+              width: '38px',
+              height: '38px',
+              objectFit: 'contain',
+              flexShrink: 0,
+              filter: 'drop-shadow(0 4px 12px rgba(212, 175, 55, 0.25))'
+            }}
+          />
           <div>
             <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF', lineHeight: 1.1 }}>{APP_NAME}</h3>
             <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 600 }}>{t('physicalShopDiscounts')}</span>

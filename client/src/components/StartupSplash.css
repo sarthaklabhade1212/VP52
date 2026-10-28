@@ -1,235 +1,147 @@
+
+/* ========================================
+   VP52 - STARTUP SPLASH SCREEN
+   ======================================== */
+
 .vp52-splash {
   position: fixed;
   inset: 0;
-  z-index: 2147483000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: #050505;
-  will-change: opacity;
-  animation: vp52-splash-master 4000ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  -webkit-user-select: none;
-  user-select: none;
+  z-index: 99999;
+
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+
+  margin: 0;
+  padding: 0;
   overflow: hidden;
-}
 
-.vp52-splash__logo-wrap {
-  position: relative;
+  background: #000000;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  width: min(56vw, 260px);
-  height: min(56vw, 260px);
-  perspective: 1000px;
+
+  border: none;
+  outline: none;
+
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
-.vp52-splash__coin-container {
-  position: relative;
+/* ========================================
+   BACKGROUND VIDEO
+   ======================================== */
+
+.vp52-splash__video {
+  position: absolute;
+  inset: 0;
+
+  display: block;
+
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transform-style: preserve-3d;
-  animation: vp52-coin-fall 4000ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
 
-.vp52-splash__glow {
-  position: absolute;
-  inset: -25%;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(242, 214, 117, 0.45) 0%,
-    rgba(212, 175, 55, 0.2) 40%,
-    rgba(212, 175, 55, 0) 70%
-  );
-  filter: blur(16px);
-  opacity: 0;
-  animation: vp52-impact-glow 4000ms ease forwards;
+  margin: 0;
+  padding: 0;
+
+  object-fit: cover;
+  object-position: center center;
+
+  background: #000000;
+
+  border: none;
+  outline: none;
+
   pointer-events: none;
-}
 
-.vp52-splash__logo {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  -webkit-user-drag: none;
-  filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 15px rgba(212, 175, 55, 0.25));
-}
+  -webkit-appearance: none;
+  appearance: none;
 
-.vp52-splash__sheen {
-  position: absolute;
-  top: -20%;
-  left: -20%;
-  width: 140%;
-  height: 140%;
-  border-radius: 50%;
-  background: linear-gradient(
-    115deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0) 35%,
-    rgba(255, 240, 180, 0.35) 48%,
-    rgba(255, 255, 255, 0.6) 50%,
-    rgba(255, 240, 180, 0.35) 52%,
-    rgba(255, 255, 255, 0) 65%,
-    transparent 100%
-  );
-  pointer-events: none;
   opacity: 0;
-  animation: vp52-gold-sheen 4000ms ease forwards;
+  transition: opacity 0.15s ease-in;
 }
 
-.vp52-splash__fallback {
-  font-family: 'Outfit', 'Plus Jakarta Sans', system-ui, sans-serif;
-  font-weight: 800;
-  font-size: clamp(48px, 13vw, 96px);
-  letter-spacing: 2px;
-  background: linear-gradient(180deg, #F2D675 0%, #D4AF37 50%, #C9A227 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: vp52-coin-fall 4000ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.vp52-splash__video--playing {
+  opacity: 1;
 }
 
-/* 
-  SEQUENCE (4.0 seconds / 4000ms total):
-  Phase 1: Dark start (0.0s -> 0.4s / 0% -> 10%)
-  Phase 2: Coin 3D fall from above (0.4s -> 1.5s / 10% -> 37.5%)
-  Phase 3: Impact & tiny physical bounce (1.5s -> 2.6s / 37.5% -> 65%)
-  Phase 4: Rotational Settle to front-facing view (2.0s -> 3.2s / 50% -> 80%)
-  Phase 5: Hold & metallic gold sheen pass (3.2s -> 4.0s / 80% -> 100%)
-*/
-@keyframes vp52-coin-fall {
-  0% {
-    opacity: 0;
-    transform: translateY(-120vh) rotateY(55deg) rotateX(30deg) scale(0.65);
+/* Hide native video controls */
+
+.vp52-splash__video::-webkit-media-controls {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+.vp52-splash__video::-webkit-media-controls-panel {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+.vp52-splash__video::-webkit-media-controls-play-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+.vp52-splash__video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+.vp52-splash__video::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
+.vp52-splash__video::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+
+/* ========================================
+   SKIP MESSAGE
+   ======================================== */
+
+.vp52-splash > div:not(.vp52-splash__video) {
+  z-index: 2;
+}
+
+/* ========================================
+   MOBILE AND ANDROID WEBVIEW
+   ======================================== */
+
+@media screen and (max-width: 768px) {
+  .vp52-splash {
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
   }
-  10% {
-    /* 0.4s - End of Phase 1 (Dark start) */
-    opacity: 0;
-    transform: translateY(-120vh) rotateY(55deg) rotateX(30deg) scale(0.65);
-  }
-  37.5% {
-    /* 1.5s - End of Phase 2 (Impact with surface, heavy coin compression) */
-    opacity: 1;
-    transform: translateY(0) rotateY(24deg) rotateX(12deg) scale(1.04, 0.94);
-  }
-  43.75% {
-    /* 1.75s - Phase 3 (First small elegant bounce rebound) */
-    opacity: 1;
-    transform: translateY(-16px) rotateY(16deg) rotateX(8deg) scale(0.98, 1.02);
-  }
-  50% {
-    /* 2.0s - Impact touch down */
-    opacity: 1;
-    transform: translateY(0) rotateY(10deg) rotateX(5deg) scale(1);
-  }
-  57.5% {
-    /* 2.3s - Micro bounce */
-    opacity: 1;
-    transform: translateY(-4px) rotateY(5deg) rotateX(2deg) scale(1);
-  }
-  65% {
-    /* 2.6s - End of Phase 3 (Settled on surface) */
-    opacity: 1;
-    transform: translateY(0) rotateY(2deg) rotateX(1deg) scale(1);
-  }
-  80% {
-    /* 3.2s - End of Phase 4 (Rotational Settle: facing viewer perfectly) */
-    opacity: 1;
-    transform: translateY(0) rotateY(0deg) rotateX(0deg) scale(1);
-  }
-  100% {
-    /* 4.0s - End of Phase 5 (Hold) */
-    opacity: 1;
-    transform: translateY(0) rotateY(0deg) rotateX(0deg) scale(1);
+
+  .vp52-splash__video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
   }
 }
 
-@keyframes vp52-impact-glow {
-  0%, 10% {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  37.5% {
-    /* Impact glow burst at 1.5s */
-    opacity: 1;
-    transform: scale(1.2);
-  }
-  55% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  80% {
-    opacity: 0.4;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1);
+/* ========================================
+   LANDSCAPE ORIENTATION
+   ======================================== */
+
+@media screen and (orientation: landscape) {
+  .vp52-splash__video {
+    object-fit: cover;
+    object-position: center center;
   }
 }
 
-@keyframes vp52-gold-sheen {
-  0%, 80% {
-    /* 0s -> 3.2s: Sheen waits off-screen */
-    transform: translateX(-140%) skewX(-25deg);
-    opacity: 0;
-  }
-  82% {
-    opacity: 1;
-  }
-  95% {
-    /* 3.8s: Light sheen sweeps across the coin */
-    transform: translateX(140%) skewX(-25deg);
-    opacity: 1;
-  }
-  100% {
-    transform: translateX(140%) skewX(-25deg);
-    opacity: 0;
-  }
-}
-
-@keyframes vp52-splash-master {
-  0%, 92.5% {
-    /* 0s -> 3.7s: Solid dark canvas */
-    opacity: 1;
-    visibility: visible;
-  }
-  100% {
-    /* 4.0s: Fade out to welcome screen */
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-  }
-}
+/* ========================================
+   ACCESSIBILITY
+   ======================================== */
 
 @media (prefers-reduced-motion: reduce) {
-  .vp52-splash {
-    animation: vp52-splash-master-reduced 1000ms ease forwards;
-  }
-  .vp52-splash__glow {
-    animation: none;
-    opacity: 0.4;
-  }
-  .vp52-splash__coin-container,
-  .vp52-splash__logo,
-  .vp52-splash__fallback {
-    transform: none !important;
-    animation: vp52-fade-in-reduced 400ms ease forwards;
-  }
-  .vp52-splash__sheen {
-    animation: none;
-    display: none;
-  }
-  @keyframes vp52-splash-master-reduced {
-    0%, 75% { opacity: 1; }
-    100% { opacity: 0; visibility: hidden; pointer-events: none; }
-  }
-  @keyframes vp52-fade-in-reduced {
-    from { opacity: 0; }
-    to { opacity: 1; }
+  .vp52-splash,
+  .vp52-splash__video {
+    animation: none !important;
+    transition: none !important;
   }
 }

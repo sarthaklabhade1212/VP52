@@ -104,12 +104,14 @@ export const getApiUrl = (path) => {
 /**
  * Robust Centralized Request Helper supporting GET, POST, PUT, PATCH, DELETE
  * Preserves Authorization headers, JWT tokens, Content-Type, and JSON bodies.
+ * Safely logs diagnostic information without logging tokens or request bodies.
  */
 export const apiFetch = async (resource, options = {}) => {
   const url = typeof resource === 'string' ? resource : (resource && resource.url ? resource.url : String(resource));
   const resolvedUrl = getApiUrl(url);
+  const method = (options && options.method) ? options.method.toUpperCase() : 'GET';
 
-  console.log('[API]', url, '→', resolvedUrl);
+  console.log(`[API Request] ${method} ${url} → ${resolvedUrl}`);
 
   const defaultHeaders = {
     'Content-Type': 'application/json'
@@ -129,12 +131,20 @@ export const apiFetch = async (resource, options = {}) => {
   };
 
   const fetchFn = window.__originalFetch || window.fetch;
-  return fetchFn(resolvedUrl, config);
+  try {
+    const res = await fetchFn(resolvedUrl, config);
+    console.log(`[API Response] ${method} ${resolvedUrl} → HTTP ${res.status} ${res.statusText}`);
+    return res;
+  } catch (err) {
+    console.error(`[API Network Error] ${method} ${resolvedUrl} → ${err.name}: ${err.message}`);
+    throw err;
+  }
 };
 
 /**
  * Transparent global window.fetch interceptor.
  * Automatically converts relative `/api/...` requests in Capacitor Android to http://10.0.2.2:5000/api/...
+ * Safely logs diagnostic info without leaking credentials or request payloads.
  */
 export const setupGlobalFetchInterceptor = () => {
   if (typeof window === 'undefined' || window.__apiFetchInterceptorSet) return;
@@ -143,7 +153,7 @@ export const setupGlobalFetchInterceptor = () => {
   const originalFetch = window.fetch;
   window.__originalFetch = originalFetch;
 
-  window.fetch = function (resource, config) {
+  window.fetch = async function (resource, config) {
     let url = '';
     let isRequestInstance = false;
 
@@ -157,14 +167,24 @@ export const setupGlobalFetchInterceptor = () => {
     if (typeof url === 'string' && (url.startsWith('/api') || url.startsWith('api/'))) {
       const formattedPath = url.startsWith('/') ? url : `/${url}`;
       const resolvedUrl = getApiUrl(formattedPath);
+      const method = (config && config.method) || (resource && resource.method) || 'GET';
 
-      console.log('[API]', url, '→', resolvedUrl);
+      console.log(`[API Intercept] ${method} ${url} → ${resolvedUrl}`);
 
-      if (isRequestInstance) {
-        const clonedReq = new Request(resolvedUrl, resource);
-        return originalFetch.call(this, clonedReq, config);
+      try {
+        let res;
+        if (isRequestInstance) {
+          const clonedReq = new Request(resolvedUrl, resource);
+          res = await originalFetch.call(this, clonedReq, config);
+        } else {
+          res = await originalFetch.call(this, resolvedUrl, config);
+        }
+        console.log(`[API Intercept Response] ${method} ${resolvedUrl} → HTTP ${res.status} ${res.statusText}`);
+        return res;
+      } catch (err) {
+        console.error(`[API Intercept Network Error] ${method} ${resolvedUrl} → ${err.name}: ${err.message}`);
+        throw err;
       }
-      return originalFetch.call(this, resolvedUrl, config);
     }
 
     return originalFetch.apply(this, arguments);

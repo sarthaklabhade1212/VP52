@@ -3,33 +3,161 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
-const { authenticateToken, requireRole, JWT_SECRET } = require('../middleware/auth');
+const { authenticateToken, requireRole, revokeToken, JWT_SECRET } = require('../middleware/auth');
 const { validatePasswordStrength } = require('../utils/password');
+const { normalizePhoneNumber } = require('../utils/phone');
+const { createRateLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
-// Customer Registration
-router.post('/customer/register', (req, res) => {
-  try {
-    const { full_name, email, phone, password } = req.body;
+// Dedicated rate limiters for customer authentication endpoints
+const authLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many authentication attempts. Please wait a few minutes before trying again.'
+});
 
-    if (!full_name || !email || !password) {
-      return res.status(400).json({ success: false, error: 'Full name, email, and password are required' });
+const profileLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 15,
+  message: 'Too many profile completion attempts. Please wait a few minutes before trying again.'
+});
+
+const resetLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 6,
+  message: 'Too many password recovery requests. Please wait a few minutes before trying again.'
+});
+
+// ============================================================
+// Customer Mobile OTP Authentication (REMOVED)
+// ------------------------------------------------------------
+// Mandatory customer OTP authentication has been removed in favor
+// of Google Sign-In and standard credentials. Any calls to these
+// deprecated endpoints return an explicit 410 Gone status.
+// ============================================================
+router.all(['/customer/request-otp', '/customer/verify-otp'], (req, res) => {
+  return res.status(410).json({
+    success: false,
+    error: 'Customer mobile OTP authentication has been removed. Please use Continue with Google or Email sign-in.'
+  });
+});
+
+// 3. Customer Profile Endpoint
+router.get('/customer/me', authenticateToken, requireRole('customer'), (req, res) => {
+  try {
+    const user = db.prepare('SELECT id, full_name, email, phone, status, profile_completed, created_at FROM users WHERE id = ?').get(req.user.id);
+    if (!user || user.status !== 'active') {
+      return res.status(403).json({ success: false, error: 'User unavailable or suspended' });
+    }
+    const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
+    const isProfileCompleted = Boolean(user.profile_completed && user.phone);
+    return res.json({
+      success: true,
+      user: {
+        ...user,
+        role: 'customer',
+        profile_completed: isProfileCompleted,
+        balance: wallet ? wallet.balance : 0,
+        total_earned: wallet ? wallet.total_earned : 0,
+        total_redeemed: wallet ? wallet.total_redeemed : 0
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch customer profile' });
+  }
+});
+
+// 4. Customer Logout & Session Revocation
+router.post('/customer/logout', authenticateToken, (req, res) => {
+  try {
+    if (req.token) {
+      revokeToken(req.token, req.user?.exp);
+    }
+    return res.json({ success: true, message: 'Customer logged out successfully' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to process logout' });
+  }
+});
+
+// General Logout
+router.post('/logout', authenticateToken, (req, res) => {
+  try {
+    if (req.token) {
+      revokeToken(req.token, req.user?.exp);
+    }
+    return res.json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to process logout' });
+  }
+});
+
+// Customer Registration (Email + Password with authoritative validation)
+router.post('/customer/register', authLimiter, (req, res) => {
+  try {
+    const { full_name, email, phone, password, confirm_password } = req.body || {};
+
+    if (!full_name || typeof full_name !== 'string' || full_name.trim().length < 2) {
+      return res.status(400).json({ success: false, error: 'Full name is required (minimum 2 characters)' });
+    }
+    if (full_name.trim().length > 100) {
+      return res.status(400).json({ success: false, error: 'Full name cannot exceed 100 characters' });
     }
 
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim().toLowerCase());
-    if (existingUser) {
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address' });
+    }
+
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'Mobile number is required' });
+    }
+    const phoneResult = normalizePhoneNumber(phone);
+    if (!phoneResult.isValid) {
+      return res.status(400).json({ success: false, error: phoneResult.error });
+    }
+
+    if (!password) {
+      return res.status(400).json({ success: false, error: 'Password is required' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long' });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ success: false, error: 'Password cannot exceed 128 characters' });
+    }
+    if (confirm_password !== undefined && confirm_password !== null && confirm_password !== password) {
+      return res.status(400).json({ success: false, error: 'Passwords do not match' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Check existing email in customer accounts
+    const existingEmail = db.prepare('SELECT id FROM users WHERE LOWER(email) = ?').get(cleanEmail);
+    if (existingEmail) {
       return res.status(400).json({ success: false, error: 'Email is already registered' });
+    }
+
+    // Check existing phone in customer accounts
+    const existingPhone = db.prepare('SELECT id FROM users WHERE phone = ?').get(phoneResult.normalized);
+    if (existingPhone) {
+      return res.status(409).json({ success: false, error: 'Mobile number is already registered to another account' });
+    }
+
+    // Role isolation: prevent registering with admin/shop email or phone
+    const adminConflict = db.prepare('SELECT id FROM admins WHERE LOWER(email) = ?').get(cleanEmail);
+    const shopConflict = db.prepare('SELECT id FROM shops WHERE LOWER(email) = ? OR phone = ?').get(cleanEmail, phoneResult.normalized);
+    if (adminConflict || shopConflict) {
+      return res.status(409).json({ success: false, error: 'This email or phone number is associated with a merchant or admin account.' });
     }
 
     const passwordHash = bcrypt.hashSync(password, 10);
 
     const insertUser = db.prepare(`
-      INSERT INTO users (full_name, email, phone, password_hash, status)
-      VALUES (?, ?, ?, ?, 'active')
+      INSERT INTO users (full_name, email, phone, password_hash, status, auth_provider, profile_completed)
+      VALUES (?, ?, ?, ?, 'active', 'local', 1)
     `);
 
-    const result = insertUser.run(full_name.trim(), email.trim().toLowerCase(), phone ? phone.trim() : null, passwordHash);
+    const result = insertUser.run(full_name.trim(), cleanEmail, phoneResult.normalized, passwordHash);
     const userId = result.lastInsertRowid;
 
     // Create wallet for new customer
@@ -39,7 +167,7 @@ router.post('/customer/register', (req, res) => {
     `).run(userId);
 
     const token = jwt.sign(
-      { id: userId, email: email.trim().toLowerCase(), role: 'customer' },
+      { id: userId, email: cleanEmail, phone: phoneResult.normalized, role: 'customer', profile_completed: 1 },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -48,32 +176,36 @@ router.post('/customer/register', (req, res) => {
       success: true,
       message: 'Account created successfully',
       token,
+      profile_completed: true,
       user: {
         id: userId,
         full_name: full_name.trim(),
-        email: email.trim().toLowerCase(),
-        phone: phone ? phone.trim() : null,
+        email: cleanEmail,
+        phone: phoneResult.normalized,
         role: 'customer',
+        profile_completed: true,
         balance: 0
       }
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('Registration error:', error.message);
     return res.status(500).json({ success: false, error: 'Internal server error during registration' });
   }
 });
 
-// Customer Login
-router.post('/customer/login', (req, res) => {
+// Customer Login (Email + Password)
+router.post('/customer/login', authLimiter, (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
 
     if (!email || !password) {
       return res.status(400).json({ success: false, error: 'Email and password are required' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.trim().toLowerCase());
+    const cleanEmail = String(email).trim().toLowerCase();
+    const user = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(cleanEmail);
 
+    // Generic error message to prevent account enumeration
     if (!user) {
       return res.status(401).json({ success: false, error: 'Invalid email or password' });
     }
@@ -88,9 +220,10 @@ router.post('/customer/login', (req, res) => {
     }
 
     const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
+    const isProfileCompleted = Boolean(user.profile_completed && user.phone);
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: 'customer' },
+      { id: user.id, email: user.email, phone: user.phone, role: 'customer', profile_completed: isProfileCompleted ? 1 : 0 },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -99,19 +232,21 @@ router.post('/customer/login', (req, res) => {
       success: true,
       message: 'Login successful',
       token,
+      profile_completed: isProfileCompleted,
       user: {
         id: user.id,
         full_name: user.full_name,
         email: user.email,
         phone: user.phone,
         role: 'customer',
+        profile_completed: isProfileCompleted,
         balance: wallet ? wallet.balance : 0,
         total_earned: wallet ? wallet.total_earned : 0,
         total_redeemed: wallet ? wallet.total_redeemed : 0
       }
     });
   } catch (error) {
-    console.error('Customer login error:', error);
+    console.error('Customer login error:', error.message);
     return res.status(500).json({ success: false, error: 'Internal server error during login' });
   }
 });
@@ -125,7 +260,7 @@ router.post('/customer/login', (req, res) => {
 // JWT used by email/password login. The email / sub / name are NEVER trusted
 // from the client -- only what Google's verified token asserts.
 // ============================================================
-router.post('/customer/google', async (req, res) => {
+router.post('/customer/google', authLimiter, async (req, res) => {
   try {
     const idToken = req.body.idToken || req.body.id_token || req.body.credential;
     if (!idToken) {
@@ -171,13 +306,14 @@ router.post('/customer/google', async (req, res) => {
 
     // 2) Resolve the customer account (link existing / create new) safely.
     let user = db.prepare('SELECT * FROM users WHERE google_subject_id = ?').get(googleSub);
+    let isProfileCompleted = false;
 
     if (!user) {
       if (!email) {
         return res.status(400).json({ success: false, error: 'Google account did not provide an email address' });
       }
 
-      const existingCustomer = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      const existingCustomer = db.prepare('SELECT * FROM users WHERE LOWER(email) = ?').get(email);
 
       if (existingCustomer) {
         // Same email is already a customer account.
@@ -193,6 +329,7 @@ router.post('/customer/google', async (req, res) => {
         // Safe account-linking: attach the verified Google identity to the customer.
         db.prepare('UPDATE users SET google_subject_id = ? WHERE id = ?').run(googleSub, existingCustomer.id);
         user = db.prepare('SELECT * FROM users WHERE id = ?').get(existingCustomer.id);
+        isProfileCompleted = Boolean(user.profile_completed && user.phone);
       } else {
         // No customer with this email. NEVER convert an admin or merchant account.
         const adminConflict = db.prepare('SELECT id FROM admins WHERE LOWER(email) = ?').get(email);
@@ -203,16 +340,16 @@ router.post('/customer/google', async (req, res) => {
         if (!emailVerified) {
           return res.status(403).json({ success: false, error: 'Google has not verified this email address.' });
         }
-        // Create a Google-provisioned customer. A random unusable password hash
-        // satisfies the existing NOT NULL column without enabling password login.
+        // Create a new Google customer. profile_completed is initially 0;
+        // phone is NULL until the Complete Profile step is performed.
         const randomSecret = crypto.randomBytes(32).toString('hex');
         const passwordHash = bcrypt.hashSync(randomSecret, 10);
         let userId;
         try {
           const result = db.prepare(`
-            INSERT INTO users (full_name, email, phone, password_hash, status, google_subject_id, auth_provider)
-            VALUES (?, ?, ?, ?, 'active', ?, 'google')
-          `).run(displayName, email, null, passwordHash, googleSub);
+            INSERT INTO users (full_name, email, phone, password_hash, status, google_subject_id, auth_provider, profile_completed)
+            VALUES (?, ?, NULL, ?, 'active', ?, 'google', 0)
+          `).run(displayName, email, passwordHash, googleSub);
           userId = result.lastInsertRowid;
         } catch (e) {
           // Unique-index race (duplicate google_subject_id / email) -> reject safely.
@@ -220,40 +357,251 @@ router.post('/customer/google', async (req, res) => {
         }
         db.prepare('INSERT INTO wallets (user_id, balance, total_earned, total_redeemed) VALUES (?, 0, 0, 0)').run(userId);
         user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+        isProfileCompleted = false;
       }
     } else {
-      // Found directly by Google identity -> standard sign-in.
+      // Found directly by Google identity -> check active status and profile completion
       if (user.status !== 'active') {
         return res.status(403).json({ success: false, error: 'Account is suspended. Please contact administrator.' });
       }
+      isProfileCompleted = Boolean(user.profile_completed && user.phone);
     }
 
-    // 3) Issue the SAME customer JWT + user shape as email/password login.
+    // 3) Issue customer JWT + user shape
     const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: 'customer' },
+      { id: user.id, email: user.email, phone: user.phone, role: 'customer', profile_completed: isProfileCompleted ? 1 : 0 },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
     return res.json({
       success: true,
-      message: 'Google login successful',
+      message: isProfileCompleted ? 'Google login successful' : 'Please complete your profile to finish registration',
       token,
+      profile_completed: isProfileCompleted,
       user: {
         id: user.id,
         full_name: user.full_name,
         email: user.email,
         phone: user.phone,
         role: 'customer',
+        profile_completed: isProfileCompleted,
         balance: wallet ? wallet.balance : 0,
         total_earned: wallet ? wallet.total_earned : 0,
         total_redeemed: wallet ? wallet.total_redeemed : 0
       }
     });
   } catch (error) {
-    console.error('Google customer login error:', error);
+    console.error('Google customer login error:', error.message);
     return res.status(500).json({ success: false, error: 'Internal server error during Google sign-in' });
+  }
+});
+
+// ============================================================
+// Customer Complete Profile (Required after first-time Google sign-in)
+// ------------------------------------------------------------
+// Validates Full Name, Mobile Number, and sets up Customer Password.
+// Prevents duplicate mobile numbers across customers, hashes the password
+// securely, and marks profile_completed = 1 before unlocking customer services.
+// ============================================================
+router.post('/customer/complete-profile', authenticateToken, requireRole('customer'), profileLimiter, (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { full_name, mobile_number, password, confirm_password } = req.body || {};
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user || user.status !== 'active') {
+      return res.status(403).json({ success: false, error: 'Customer account unavailable or suspended' });
+    }
+
+    if (!full_name || typeof full_name !== 'string' || full_name.trim().length < 2) {
+      return res.status(400).json({ success: false, error: 'Full name is required (minimum 2 characters)' });
+    }
+    if (full_name.trim().length > 100) {
+      return res.status(400).json({ success: false, error: 'Full name cannot exceed 100 characters' });
+    }
+
+    if (!mobile_number) {
+      return res.status(400).json({ success: false, error: 'Mobile number is required' });
+    }
+    const phoneResult = normalizePhoneNumber(mobile_number);
+    if (!phoneResult.isValid) {
+      return res.status(400).json({ success: false, error: phoneResult.error });
+    }
+
+    // Uniqueness check: mobile number must not belong to another customer
+    const phoneConflict = db.prepare('SELECT id FROM users WHERE phone = ? AND id != ?').get(phoneResult.normalized, userId);
+    if (phoneConflict) {
+      return res.status(409).json({ success: false, error: 'Mobile number is already registered to another account' });
+    }
+
+    // Uniqueness check: mobile number must not belong to a merchant
+    const shopPhoneConflict = db.prepare('SELECT id FROM shops WHERE phone = ?').get(phoneResult.normalized);
+    if (shopPhoneConflict) {
+      return res.status(409).json({ success: false, error: 'This mobile number is registered to a merchant account' });
+    }
+
+    if (!password || !confirm_password) {
+      return res.status(400).json({ success: false, error: 'Password and confirm password are required' });
+    }
+    if (password !== confirm_password) {
+      return res.status(400).json({ success: false, error: 'Passwords do not match' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long' });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ success: false, error: 'Password cannot exceed 128 characters' });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+
+    db.prepare(`
+      UPDATE users
+      SET full_name = ?,
+          phone = ?,
+          password_hash = ?,
+          profile_completed = 1
+      WHERE id = ?
+    `).run(full_name.trim(), phoneResult.normalized, passwordHash, userId);
+
+    const updatedUser = db.prepare('SELECT id, full_name, email, phone, status, profile_completed, created_at FROM users WHERE id = ?').get(userId);
+    const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(userId);
+
+    // Issue updated token reflecting profile_completed: 1
+    const token = jwt.sign(
+      { id: updatedUser.id, email: updatedUser.email, phone: updatedUser.phone, role: 'customer', profile_completed: 1 },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Profile completed successfully',
+      token,
+      profile_completed: true,
+      user: {
+        id: updatedUser.id,
+        full_name: updatedUser.full_name,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        role: 'customer',
+        profile_completed: true,
+        balance: wallet ? wallet.balance : 0,
+        total_earned: wallet ? wallet.total_earned : 0,
+        total_redeemed: wallet ? wallet.total_redeemed : 0
+      }
+    });
+  } catch (error) {
+    console.error('Complete profile error:', error.message);
+    return res.status(500).json({ success: false, error: 'Failed to complete profile' });
+  }
+});
+
+// ============================================================
+// Customer Password Recovery (Secure token-based flow)
+// ------------------------------------------------------------
+// POST /customer/forgot-password: Initiates recovery. Uses a generic message
+// to prevent email enumeration. In dev mode, returns the token for verification.
+// POST /customer/reset-password: Validates hashed single-use token and updates password.
+// ============================================================
+router.post('/customer/forgot-password', resetLimiter, (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      return res.status(400).json({ success: false, error: 'Email address is required' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const genericMsg = 'If an account exists with this email, password reset instructions have been initiated.';
+
+    const user = db.prepare('SELECT id, email, status FROM users WHERE LOWER(email) = ?').get(cleanEmail);
+
+    let devResetToken = null;
+    if (user && user.status === 'active') {
+      // Invalidate any active unused reset tokens for this user
+      db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL').run(user.id);
+
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+      db.prepare(`
+        INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+        VALUES (?, ?, ?)
+      `).run(user.id, tokenHash, expiresAt);
+
+      if (process.env.NODE_ENV !== 'production') {
+        devResetToken = rawToken;
+      }
+    }
+
+    const responseBody = {
+      success: true,
+      message: genericMsg
+    };
+    if (devResetToken) {
+      responseBody.dev_reset_token = devResetToken;
+    }
+
+    return res.json(responseBody);
+  } catch (error) {
+    console.error('Forgot password error:', error.message);
+    return res.status(500).json({ success: false, error: 'Failed to process password recovery request' });
+  }
+});
+
+router.post('/customer/reset-password', resetLimiter, (req, res) => {
+  try {
+    const { token, password, confirm_password } = req.body || {};
+
+    if (!token || typeof token !== 'string' || !token.trim()) {
+      return res.status(400).json({ success: false, error: 'Password reset token is required' });
+    }
+
+    if (!password || !confirm_password) {
+      return res.status(400).json({ success: false, error: 'Password and confirm password are required' });
+    }
+    if (password !== confirm_password) {
+      return res.status(400).json({ success: false, error: 'Passwords do not match' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long' });
+    }
+    if (password.length > 128) {
+      return res.status(400).json({ success: false, error: 'Password cannot exceed 128 characters' });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+    const record = db.prepare('SELECT * FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL').get(tokenHash);
+
+    if (!record) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired password reset link. Please request a new one.' });
+    }
+
+    const now = new Date().getTime();
+    const expiresAt = new Date(record.expires_at).getTime();
+    if (now > expiresAt) {
+      return res.status(400).json({ success: false, error: 'Password reset link has expired. Please request a new one.' });
+    }
+
+    const user = db.prepare('SELECT id, status FROM users WHERE id = ?').get(record.user_id);
+    if (!user || user.status !== 'active') {
+      return res.status(403).json({ success: false, error: 'User account is unavailable or suspended' });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
+    db.prepare('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(record.id);
+
+    return res.json({
+      success: true,
+      message: 'Password has been reset successfully. You can now sign in with your new password.'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error.message);
+    return res.status(500).json({ success: false, error: 'Failed to reset password' });
   }
 });
 
@@ -478,16 +826,18 @@ router.post('/merchant/register', (req, res) => {
 router.get('/me', authenticateToken, (req, res) => {
   try {
     if (req.user.role === 'customer') {
-      const user = db.prepare('SELECT id, full_name, email, phone, status, created_at FROM users WHERE id = ?').get(req.user.id);
+      const user = db.prepare('SELECT id, full_name, email, phone, status, profile_completed, created_at FROM users WHERE id = ?').get(req.user.id);
       if (!user || user.status !== 'active') {
         return res.status(403).json({ success: false, error: 'User unavailable or suspended' });
       }
       const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
+      const isProfileCompleted = Boolean(user.profile_completed && user.phone);
       return res.json({
         success: true,
         user: {
           ...user,
           role: 'customer',
+          profile_completed: isProfileCompleted,
           balance: wallet ? wallet.balance : 0,
           total_earned: wallet ? wallet.total_earned : 0,
           total_redeemed: wallet ? wallet.total_redeemed : 0
@@ -592,4 +942,31 @@ router.post('/shop/change-password', authenticateToken, requireRole('shop'), (re
   }
 });
 
+// POST /api/auth/request-account-deletion - Public Account Deletion Request (Google Play Compliance)
+router.post('/request-account-deletion', (req, res) => {
+  try {
+    const { identifier, reason } = req.body;
+    if (!identifier || typeof identifier !== 'string' || !identifier.trim()) {
+      return res.status(400).json({ success: false, error: 'Email or phone number is required.' });
+    }
+
+    const cleanIdentifier = identifier.trim().toLowerCase();
+    const cleanReason = (reason || '').trim().slice(0, 500);
+
+    db.prepare(`
+      INSERT INTO account_deletion_requests (identifier, reason, status)
+      VALUES (?, ?, 'pending')
+    `).run(cleanIdentifier, cleanReason);
+
+    return res.json({
+      success: true,
+      message: 'Your deletion request has been registered in the operator review queue. The operator manually reviews requests and verifies identity before processing account deletion.'
+    });
+  } catch (error) {
+    console.error('Account deletion request error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to record deletion request.' });
+  }
+});
+
 module.exports = router;
+

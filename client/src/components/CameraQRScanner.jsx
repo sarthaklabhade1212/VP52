@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, X, RefreshCw, AlertTriangle, ShieldAlert, CheckCircle2, Lock } from 'lucide-react';
+import { Camera, X, RefreshCw, AlertTriangle, Lock } from 'lucide-react';
+import { useI18n } from '../i18n/I18nContext';
 
 export default function CameraQRScanner({ onScanSuccess, onClose }) {
+  const { t } = useI18n();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const activeStreamRef = useRef(null);
@@ -186,7 +188,7 @@ export default function CameraQRScanner({ onScanSuccess, onClose }) {
           </div>
 
           <div style={{ textAlign: 'center', fontSize: '13px', fontWeight: 800, color: '#F2D675', textShadow: '0 2px 4px rgba(0,0,0,0.9)' }}>
-            Position QR inside the frame
+            {t('cameraScanGuide')}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -225,21 +227,21 @@ export default function CameraQRScanner({ onScanSuccess, onClose }) {
             className="btn-secondary"
             style={{ flex: 1, padding: '12px', fontSize: '14px', borderRadius: '12px', justifyContent: 'center' }}
           >
-            <RefreshCw size={16} color="#D4AF37" /> Scan Again
+            <RefreshCw size={16} color="#D4AF37" /> {t('scanAgainBtn')}
           </button>
           <button
             type="button"
             onClick={handleClose}
             style={{ flex: 1, padding: '12px', fontSize: '14px', borderRadius: '12px', justifyContent: 'center', background: '#151515', color: '#B8B8B8', border: '1px solid rgba(212, 175, 55, 0.15)', cursor: 'pointer', fontWeight: 700 }}
           >
-            Cancel
+            {t('cancelBtn')}
           </button>
         </div>
 
         {/* Development Token Entry Fallback */}
         <div style={{ paddingTop: '10px', borderTop: '1px solid rgba(212, 175, 55, 0.15)' }}>
           <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', display: 'block', marginBottom: '8px' }}>
-            MANUAL TOKEN ENTRY FALLBACK
+            {t('manualCodeEntry')}
           </span>
 
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -257,7 +259,7 @@ export default function CameraQRScanner({ onScanSuccess, onClose }) {
               className="btn-primary"
               style={{ padding: '0 18px', fontSize: '13px', borderRadius: '12px', whiteSpace: 'nowrap' }}
             >
-              Verify Code
+              {t('verifyVoucherBtn')}
             </button>
           </div>
         </div>

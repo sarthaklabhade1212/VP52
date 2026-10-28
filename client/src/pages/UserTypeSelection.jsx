@@ -68,7 +68,7 @@ export default function UserTypeSelection() {
                 background: '#111111', border: '1px solid rgba(212, 175, 55, 0.3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
               }}>
-                <img src={vp52Logo} alt="VP52" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
+                <img src={vp52Logo} alt="VP52" style={{ width: '34px', height: '34px', objectFit: 'contain' }} />
               </div>
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#FFFFFF' }}>{t('customerRole')}</h3>

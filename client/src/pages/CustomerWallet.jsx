@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Wallet, Sparkles, ShoppingBag, Clock, ChevronRight, Award, ShieldCheck, Info } from 'lucide-react';
+import { useI18n } from '../i18n/I18nContext';
+import { Sparkles, ShoppingBag } from 'lucide-react';
 
 const TIER_METADATA = [
   { name: 'Bronze', color: '#CD7F32', badge: '🥉 Tier 1' },
@@ -19,6 +20,7 @@ const TIER_METADATA = [
 
 export default function CustomerWallet() {
   const { token } = useAuth();
+  const { t } = useI18n();
   const [wallet, setWallet] = useState({
     balance: 0,
     available_coins: 0,
@@ -60,23 +62,23 @@ export default function CustomerWallet() {
       {/* Header Title */}
       <div style={{ marginBottom: '20px' }}>
         <h2 style={{ fontSize: '24px', color: '#FFFFFF', marginBottom: '4px', fontWeight: 800 }}>
-          VP52 Multi-Tier Wallet & Aging Ledger
+          {t('walletTitle')}
         </h2>
         <p style={{ fontSize: '13px', color: '#B8B8B8', margin: 0 }}>
-          12-Tier Monthly Coin Progression System • 30-Day Batch Aging
+          {t('walletSubtitle')}
         </p>
       </div>
 
       {/* Main Balance Hero Card */}
       <div className="wallet-gradient-card" style={{ marginBottom: '24px', padding: '24px', borderRadius: '24px' }}>
         <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#B8B8B8', fontWeight: 700 }}>
-          TOTAL COIN BALANCE (ALL TIERS)
+          {t('totalCoinBalanceAllTiers')}
         </span>
         <h1 style={{ fontSize: '38px', fontWeight: 800, marginTop: '4px', lineHeight: 1, marginBottom: '6px', color: '#F2D675' }}>
           🪙 {(wallet.available_coins || wallet.balance || 0).toLocaleString()} <span style={{ fontSize: '18px', fontWeight: 600, color: '#FFFFFF' }}>VP52 Coins</span>
         </h1>
-        <div style={{ fontSize: '15px', color: '#D4AF37', fontWeight: 800, marginBottom: '18px' }}>
-          Estimated Value: ₹{(wallet.discount_value_inr || wallet.available_coins || 0).toLocaleString()} INR
+        <div style={{ fontSize: '13px', color: '#D4AF37', fontWeight: 600, marginBottom: '18px' }}>
+          {t('activeLoyaltyCoins')}
         </div>
 
         {/* 2x2 Grid Summary */}
@@ -88,23 +90,23 @@ export default function CustomerWallet() {
           borderTop: '1px solid rgba(212, 175, 55, 0.2)'
         }}>
           <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.15)', padding: '10px 14px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>Earned Today</span>
+            <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>{t('earnedToday')}</span>
             <strong style={{ fontSize: '15px', color: '#F2D675' }}>+{(wallet.earned_today || 0)} Coins</strong>
           </div>
 
           <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.15)', padding: '10px 14px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>Earned This Month</span>
+            <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>{t('earnedThisMonth')}</span>
             <strong style={{ fontSize: '15px', color: '#F2D675' }}>+{(wallet.earned_this_month || 0)} Coins</strong>
           </div>
 
           <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.15)', padding: '10px 14px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>Lifetime Earned</span>
+            <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>{t('totalEarned')}</span>
             <strong style={{ fontSize: '15px', color: '#FFFFFF' }}>{(wallet.total_earned || 0)} Coins</strong>
           </div>
 
           <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.15)', padding: '10px 14px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '11px', color: '#ef4444', display: 'block' }}>Expired Coins</span>
-            <strong style={{ fontSize: '15px', color: '#FFFFFF' }}>{(wallet.total_expired || 0)} Coins</strong>
+            <span style={{ fontSize: '11px', color: '#ef4444', display: 'block' }}>{t('totalRedeemed')}</span>
+            <strong style={{ fontSize: '15px', color: '#FFFFFF' }}>{(wallet.total_redeemed || 0)} Coins</strong>
           </div>
         </div>
       </div>
@@ -126,7 +128,7 @@ export default function CustomerWallet() {
             color: activeTab === 'tiers' ? '#F2D675' : '#777777'
           }}
         >
-          12 Coin Tiers
+          {t('tabTiersBreakdown')}
         </button>
 
         <button
@@ -137,7 +139,7 @@ export default function CustomerWallet() {
             color: activeTab === 'batches' ? '#F2D675' : '#777777'
           }}
         >
-          Active Batches ({activeLots.length})
+          {t('tabActiveBatches')} ({activeLots.length})
         </button>
 
         <button
@@ -148,7 +150,7 @@ export default function CustomerWallet() {
             color: activeTab === 'earned' ? '#F2D675' : '#777777'
           }}
         >
-          Earned History
+          {t('tabEarnHistory')}
         </button>
 
         <button
@@ -159,15 +161,15 @@ export default function CustomerWallet() {
             color: activeTab === 'redeemed' ? '#F2D675' : '#777777'
           }}
         >
-          Redeemed
+          {t('tabRedeemedHistory')}
         </button>
       </div>
 
       {/* TAB CONTENT: 12 COIN TIERS HIERARCHY */}
       {activeTab === 'tiers' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {TIER_METADATA.map((tierMeta, idx) => {
-            const summary = tierSummary.find(s => s.tier === tierMeta.name) || { coins: 0, value_inr: 0, unit_value: 1, lots_count: 0 };
+          {TIER_METADATA.map((tierMeta) => {
+            const summary = tierSummary.find(s => s.tier === tierMeta.name) || { coins: 0, unit_value: 1, lots_count: 0 };
             return (
               <div
                 key={tierMeta.name}
@@ -206,7 +208,7 @@ export default function CustomerWallet() {
                       </span>
                     </div>
                     <span style={{ fontSize: '11px', color: '#B8B8B8', marginTop: '2px', display: 'block' }}>
-                      Value: ₹{summary.unit_value} / coin • {summary.lots_count} Active Batch{summary.lots_count !== 1 ? 'es' : ''}
+                      {summary.lots_count} {t('activeBatchesLabel')}
                     </span>
                   </div>
                 </div>
@@ -216,7 +218,7 @@ export default function CustomerWallet() {
                     {summary.coins.toLocaleString()}
                   </span>
                   <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>
-                    ₹{summary.value_inr.toLocaleString()} Value
+                    Coins
                   </span>
                 </div>
               </div>
@@ -229,7 +231,7 @@ export default function CustomerWallet() {
       {activeTab === 'batches' && (
         activeLots.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: '#B8B8B8' }}>
-            No active coin batches. Start a 6-hour session to earn your first Bronze coin lot!
+            {t('noActiveBatches')}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -243,12 +245,12 @@ export default function CustomerWallet() {
                     </span>
                   </div>
                   <span style={{ fontSize: '11px', color: '#B8B8B8', marginTop: '4px', display: 'block' }}>
-                    Earned: {new Date(lot.earned_at).toLocaleDateString()} • Next Matured Transition: {new Date(lot.next_transition_at || lot.expires_at).toLocaleDateString()}
+                    Earned: {new Date(lot.earned_at).toLocaleDateString()} • {t('nextTransitionLabel')}: {new Date(lot.next_transition_at || lot.expires_at).toLocaleDateString()}
                   </span>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <span style={{ fontSize: '11px', color: '#F2D675', background: '#151515', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(212, 175, 55, 0.2)' }}>
-                    In ~{Math.max(1, Math.floor((lot.hours_until_transition || 720) / 24))} Days
+                    {t('inDaysLabel', { days: Math.max(1, Math.floor((lot.hours_until_transition || 720) / 24)) })}
                   </span>
                 </div>
               </div>
@@ -261,7 +263,7 @@ export default function CustomerWallet() {
       {activeTab === 'earned' && (
         rewardHistory.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: '#B8B8B8' }}>
-            No earned coins history yet. Complete sessions to earn coins!
+            {t('noEarnHistory')}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -287,7 +289,7 @@ export default function CustomerWallet() {
       {activeTab === 'redeemed' && (
         redemptionHistory.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: '#B8B8B8' }}>
-            No redemptions yet. Visit physical stores and redeem coins for instant discounts!
+            {t('noRedemptionHistory')}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

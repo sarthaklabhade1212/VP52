@@ -1,30 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
 import CameraQRScanner from '../../components/CameraQRScanner';
 import {
   QrCode,
   CheckCircle2,
-  XCircle,
-  ShoppingBag,
-  Tag,
-  Calendar,
-  IndianRupee,
-  Search,
-  Store,
-  MapPin,
-  Phone,
-  Mail,
-  ShieldCheck,
-  Award,
-  User,
-  ArrowRight,
-  Sparkles
+  ArrowRight
 } from 'lucide-react';
 
 export default function ShopDashboard() {
   const navigate = useNavigate();
   const { token, user } = useAuth();
+  const { t } = useI18n();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -89,7 +77,7 @@ export default function ShopDashboard() {
     return <div style={{ padding: '40px', color: '#B8B8B8', textAlign: 'center' }}>Loading merchant dashboard...</div>;
   }
 
-  const { shop, stats, recentRedemptions, activeOffers } = data;
+  const { shop, stats, recentRedemptions } = data;
 
   return (
     <div style={{ maxWidth: '600px', margin: '0 auto', background: '#050505' }}>
@@ -120,7 +108,7 @@ export default function ShopDashboard() {
           boxShadow: '0 10px 25px rgba(212, 175, 55, 0.3)'
         }}
       >
-        <QrCode size={24} color="#050505" /> Scan Customer QR (Device Camera)
+        <QrCode size={24} color="#050505" /> {t('scanCustomerQrBtn')}
       </button>
 
       {/* Customer Found Card Modal / Banner */}
@@ -130,7 +118,7 @@ export default function ShopDashboard() {
           marginBottom: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
         }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '4px 12px', borderRadius: '99px', fontWeight: 800, fontSize: '12px', marginBottom: '16px' }}>
-            <CheckCircle2 size={14} color="#F2D675" /> CUSTOMER VERIFIED
+            <CheckCircle2 size={14} color="#F2D675" /> {t('verifiedCustomerBadge')}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
@@ -143,12 +131,12 @@ export default function ShopDashboard() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px', fontSize: '13px' }}>
             <div style={{ background: '#151515', padding: '12px', borderRadius: '12px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>Available Points</span>
-              <strong style={{ fontSize: '18px', color: '#F2D675' }}>🪙 {scannedCustomer.balance.toLocaleString()} Pts</strong>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>{t('availableCoins')}</span>
+              <strong style={{ fontSize: '18px', color: '#F2D675' }}>🪙 {scannedCustomer.balance.toLocaleString()} Coins</strong>
             </div>
 
             <div style={{ background: '#151515', padding: '12px', borderRadius: '12px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>Current Tier</span>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>{t('yourMembershipTier')}</span>
               <strong style={{ fontSize: '18px', color: '#D4AF37' }}>🏆 {scannedCustomer.current_level}</strong>
             </div>
           </div>
@@ -158,7 +146,7 @@ export default function ShopDashboard() {
             className="btn-primary"
             style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center', borderRadius: '14px' }}
           >
-            Create Bill / Redeem Reward <ArrowRight size={18} color="#050505" />
+            {t('createBillRedeemBtn')} <ArrowRight size={18} color="#050505" />
           </button>
         </div>
       )}
@@ -172,43 +160,47 @@ export default function ShopDashboard() {
       {/* KPI Mobile Grid Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
         <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Today's Redemptions</span>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>{t('todaysRedemptions')}</span>
           <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', margin: '4px 0 0 0' }}>{stats.todayRedemptions}</h2>
         </div>
 
         <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Total Redemptions</span>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>{t('totalRedeemed')}</span>
           <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', margin: '4px 0 0 0' }}>{stats.totalRedemptions}</h2>
         </div>
 
         <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Active Offers</span>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>{t('rewardsTab')}</span>
           <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#F2D675', margin: '4px 0 0 0' }}>{stats.activeOffersCount}</h2>
         </div>
 
         <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Total Discounts</span>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>{t('totalDiscountsApproved')}</span>
           <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#D4AF37', margin: '4px 0 0 0' }}>₹{stats.totalDiscountsGiven}</h2>
         </div>
       </div>
 
       {/* Recent Redemptions Card List */}
       <div style={{ background: '#111111', borderRadius: '20px', padding: '20px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF', marginBottom: '14px' }}>Recent Store Redemptions</h3>
+        <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF', marginBottom: '14px' }}>{t('recentStoreRedemptions')}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {recentRedemptions.map(r => (
-            <div key={r.id} style={{ background: '#151515', padding: '12px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <span style={{ fontWeight: 800, color: '#F2D675', fontSize: '13px' }}>{r.redemption_code}</span>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: '#FFFFFF' }}>{r.customer_name}</div>
-                <span style={{ fontSize: '11px', color: '#B8B8B8' }}>{r.offer_title}</span>
+          {recentRedemptions.length === 0 ? (
+            <div style={{ color: '#888888', fontSize: '13px', textAlign: 'center', padding: '16px' }}>{t('noRedemptionsToday')}</div>
+          ) : (
+            recentRedemptions.map(r => (
+              <div key={r.id} style={{ background: '#151515', padding: '12px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontWeight: 800, color: '#F2D675', fontSize: '13px' }}>{r.redemption_code}</span>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#FFFFFF' }}>{r.customer_name}</div>
+                  <span style={{ fontSize: '11px', color: '#B8B8B8' }}>{r.offer_title}</span>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontWeight: 800, color: '#D4AF37', fontSize: '13px' }}>{r.discount_percent}% OFF</span>
+                  <span className={`badge ${r.status === 'USED' ? 'badge-used' : 'badge-active'}`} style={{ display: 'block', marginTop: '4px', fontSize: '10px' }}>{r.status}</span>
+                </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontWeight: 800, color: '#D4AF37', fontSize: '13px' }}>{r.discount_percent}% OFF</span>
-                <span className={`badge ${r.status === 'USED' ? 'badge-used' : 'badge-active'}`} style={{ display: 'block', marginTop: '4px', fontSize: '10px' }}>{r.status}</span>
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 

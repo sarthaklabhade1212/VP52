@@ -10,10 +10,15 @@ import StartupSplash from './components/StartupSplash';
 import WelcomeScreen from './pages/WelcomeScreen';
 import UserTypeSelection from './pages/UserTypeSelection';
 import LoginSelector from './pages/LoginSelector';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import DeleteAccount from './pages/DeleteAccount';
+
 
 // Customer Pages
 import CustomerLayout from './components/CustomerLayout';
 import CustomerLogin from './pages/CustomerLogin';
+import CustomerCompleteProfile from './pages/CustomerCompleteProfile';
+import CustomerForgotPassword from './pages/CustomerForgotPassword';
 import CustomerHome from './pages/CustomerHome';
 import CustomerRewards from './pages/CustomerRewards';
 import CustomerWallet from './pages/CustomerWallet';
@@ -50,9 +55,19 @@ import AdminMerchantVerification from './pages/admin/AdminMerchantVerification';
 // Protected Route Wrapper for Customers
 function CustomerRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading application...</div>;
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', fontWeight: 700 }}>
+        Loading VP52...
+      </div>
+    );
+  }
   if (!user || user.role !== 'customer') {
     return <Navigate to="/customer/login" replace />;
+  }
+  // Enforce profile completion before allowing access to customer portal
+  if (user.profile_completed === false) {
+    return <Navigate to="/customer/complete-profile" replace />;
   }
   return children;
 }
@@ -60,7 +75,13 @@ function CustomerRoute({ children }) {
 // Protected Route Wrapper for Shop Merchants
 function ShopRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading shop dashboard...</div>;
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', fontWeight: 700 }}>
+        Loading merchant portal...
+      </div>
+    );
+  }
   if (!user || user.role !== 'shop') {
     return <Navigate to="/shop/login" replace />;
   }
@@ -70,7 +91,13 @@ function ShopRoute({ children }) {
 // Protected Route Wrapper for Admins
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading admin dashboard...</div>;
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', fontWeight: 700 }}>
+        Loading admin panel...
+      </div>
+    );
+  }
   if (!user || user.role !== 'admin') {
     return <Navigate to="/admin/login" replace />;
   }
@@ -82,7 +109,12 @@ function RootRedirect() {
   if (loading) return null;
   if (user?.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
   if (user?.role === 'shop') return <Navigate to="/shop/dashboard" replace />;
-  if (user?.role === 'customer') return <Navigate to="/customer/home" replace />;
+  if (user?.role === 'customer') {
+    if (user.profile_completed === false) {
+      return <Navigate to="/customer/complete-profile" replace />;
+    }
+    return <Navigate to="/customer/home" replace />;
+  }
   return <Navigate to="/welcome" replace />;
 }
 
@@ -99,9 +131,13 @@ export default function App() {
             <Route path="/welcome" element={<WelcomeScreen />} />
             <Route path="/user-type-selection" element={<UserTypeSelection />} />
             <Route path="/portal" element={<LoginSelector />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/delete-account" element={<DeleteAccount />} />
 
             {/* Customer Auth & Protected Routes */}
             <Route path="/customer/login" element={<CustomerLogin />} />
+            <Route path="/customer/complete-profile" element={<CustomerCompleteProfile />} />
+            <Route path="/customer/forgot-password" element={<CustomerForgotPassword />} />
             <Route
               path="/customer"
               element={

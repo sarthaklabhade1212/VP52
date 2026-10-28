@@ -356,13 +356,10 @@ export default function CustomerHome() {
 
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#B8B8B8', display: 'block' }}>
-              AVAILABLE COINS
+              {t('availableCoins') || 'AVAILABLE COINS'}
             </span>
             <span style={{ fontSize: '28px', fontWeight: 800, color: '#F2D675' }}>
               🪙 {user ? user.balance.toLocaleString() : 0}
-            </span>
-            <span style={{ fontSize: '11px', color: '#D4AF37', display: 'block', fontWeight: 700 }}>
-              (₹{user ? user.balance.toLocaleString() : 0} Discount Value)
             </span>
           </div>
         </div>
@@ -396,7 +393,7 @@ export default function CustomerHome() {
         {/* Card Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <img src={vp52Logo} alt="VP52" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+            <img src={vp52Logo} alt="VP52" style={{ width: '44px', height: '44px', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(212, 175, 55, 0.3))' }} />
             <div>
               <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>VP52 Earning Session</h3>
               <span style={{ fontSize: '12px', color: '#B8B8B8' }}>Earn 100 VP52 Coins in 6 Hours</span>

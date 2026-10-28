@@ -8,6 +8,11 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "seed": "node db/seed.js",
+    "admin": "node scripts/manage-admin.js",
+    "test": "node test-customer-google-auth.js",
+    "test:google": "node test-customer-google-auth.js",
+    "test:admin": "node test-admin-auth.js",
+    "test:all": "node test-customer-google-auth.js && node test-chat.js && node test-merchant-location.js && node test-ad-reward-fix.js && node test-coin-session.js && node test-vp52-tier-system.js && node test-dual-auth.js && node test-admin-auth.js",
     "test:chat": "node test-chat.js",
     "test:merchant": "node test-merchant-location.js"
   },

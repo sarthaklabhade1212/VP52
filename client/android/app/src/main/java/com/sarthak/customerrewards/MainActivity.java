@@ -1,12 +1,17 @@
+
 package com.sarthak.customerrewards;
 
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
+import androidx.core.splashscreen.SplashScreen;
+
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginHandle;
 
@@ -19,57 +24,103 @@ public class MainActivity extends BridgeActivity
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Install the native Android splash screen before creating the activity.
+        SplashScreen.installSplashScreen(this);
+
         super.onCreate(savedInstanceState);
 
-        final WebView webView = getBridge().getWebView();
+        WebView webView = getBridge().getWebView();
 
         if (webView != null) {
             WebSettings settings = webView.getSettings();
             settings.setMixedContentMode(
                     WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             );
-        }
+            settings.setMediaPlaybackRequiresUserGesture(false);
 
-        Log.i("VIPSOrigin", "Capacitor androidScheme = " + getBridge().getScheme());
-        if (webView != null) {
+            webView.setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
+                private Bitmap defaultPoster;
+
+                @Override
+                public Bitmap getDefaultVideoPoster() {
+                    if (defaultPoster == null) {
+                        defaultPoster = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+                    }
+                    return defaultPoster;
+                }
+            });
+
             webView.post(new Runnable() {
                 @Override
                 public void run() {
-                    Log.i("VIPSOrigin", "WebView origin = " + webView.getUrl());
+                    Log.i(
+                            "VIPSOrigin",
+                            "WebView origin = " + webView.getUrl()
+                    );
                 }
             });
         }
+
+        Log.i(
+                "VIPSOrigin",
+                "Capacitor androidScheme = " + getBridge().getScheme()
+        );
     }
 
     @Override
     public void onStart() {
         super.onStart();
-        if (this.getBridge() != null && this.getBridge().getWebView() != null) {
-            WebSettings settings = this.getBridge().getWebView().getSettings();
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            WebSettings settings =
+                    getBridge().getWebView().getSettings();
+
+            settings.setMixedContentMode(
+                    WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            );
+            settings.setMediaPlaybackRequiresUserGesture(false);
         }
     }
 
     @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+    public void onActivityResult(
+            int requestCode,
+            int resultCode,
+            Intent data
+    ) {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode >= GoogleProvider.REQUEST_AUTHORIZE_GOOGLE_MIN
                 && requestCode < GoogleProvider.REQUEST_AUTHORIZE_GOOGLE_MAX) {
-            PluginHandle pluginHandle = getBridge().getPlugin("SocialLogin");
+
+            PluginHandle pluginHandle =
+                    getBridge().getPlugin("SocialLogin");
+
             if (pluginHandle == null) {
-                Log.i("MainActivity", "SocialLogin plugin handle is null");
+                Log.i(
+                        "MainActivity",
+                        "SocialLogin plugin handle is null"
+                );
                 return;
             }
+
             Plugin plugin = pluginHandle.getInstance();
+
             if (!(plugin instanceof SocialLoginPlugin)) {
-                Log.i("MainActivity", "Plugin instance is not SocialLoginPlugin");
+                Log.i(
+                        "MainActivity",
+                        "Plugin instance is not SocialLoginPlugin"
+                );
                 return;
             }
-            ((SocialLoginPlugin) plugin).handleGoogleLoginIntent(requestCode, data);
+
+            ((SocialLoginPlugin) plugin)
+                    .handleGoogleLoginIntent(requestCode, data);
         }
     }
 
     @Override
-    public void IHaveModifiedTheMainActivityForTheUseWithSocialLoginPlugin() {}
+    public void IHaveModifiedTheMainActivityForTheUseWithSocialLoginPlugin() {
+        // Required by the Social Login plugin.
+    }
 }

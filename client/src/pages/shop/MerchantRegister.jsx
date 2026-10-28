@@ -31,12 +31,12 @@ export default function MerchantRegister() {
           alt="VP52 Logo"
           draggable="false"
           style={{
-            width: '84px',
-            height: 'auto',
-            maxHeight: '84px',
+            width: '92px',
+            height: '92px',
             objectFit: 'contain',
             display: 'inline-block',
-            marginBottom: '16px'
+            marginBottom: '16px',
+            filter: 'drop-shadow(0 6px 20px rgba(212, 175, 55, 0.3))'
           }}
         />
 

@@ -1,9 +1,12 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useI18n } from '../i18n/I18nContext';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import vp52Logo from '../assets/vp52-logo.png';
 
 export default function WelcomeScreen() {
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   return (
     <div
@@ -50,6 +53,18 @@ export default function WelcomeScreen() {
         }
       `}</style>
 
+      {/* Language Switcher in top right corner */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '20px',
+          right: '20px',
+          zIndex: 10
+        }}
+      >
+        <LanguageSwitcher tone="dark" compact={true} />
+      </div>
+
       <div
         style={{
           display: 'flex',
@@ -62,18 +77,18 @@ export default function WelcomeScreen() {
         }}
       >
         {/* 1. VP52 Logo */}
-        <div className="ws-logo-anim" style={{ marginBottom: '40px', textAlign: 'center' }}>
+        <div className="ws-logo-anim" style={{ marginBottom: '32px', textAlign: 'center' }}>
           <img
             src={vp52Logo}
             alt="VP52"
             draggable="false"
             style={{
-              width: '120px',
-              height: 'auto',
-              maxHeight: '120px',
+              width: '130px',
+              height: '130px',
               objectFit: 'contain',
               display: 'block',
-              margin: '0 auto'
+              margin: '0 auto',
+              filter: 'drop-shadow(0 8px 30px rgba(212, 175, 55, 0.35))'
             }}
           />
         </div>
@@ -85,14 +100,28 @@ export default function WelcomeScreen() {
             fontSize: '26px',
             fontWeight: 700,
             color: '#D4AF37',
-            margin: '0 0 48px 0',
+            margin: '0 0 12px 0',
             textAlign: 'center',
             letterSpacing: '0.3px',
             fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
           }}
         >
-          Welcome to VP52
+          {t('welcomeTitle')}
         </h1>
+
+        <p
+          className="ws-heading-anim"
+          style={{
+            fontSize: '14px',
+            color: '#A0A0A0',
+            margin: '0 0 44px 0',
+            textAlign: 'center',
+            maxWidth: '320px',
+            lineHeight: 1.4
+          }}
+        >
+          {t('welcomeTagline')}
+        </p>
 
         {/* 3. Get Started Button */}
         <div className="ws-btn-anim" style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
@@ -120,7 +149,7 @@ export default function WelcomeScreen() {
               fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
             }}
           >
-            Get Started
+            {t('getStarted')}
           </button>
         </div>
       </div>

@@ -1,13 +1,14 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../db/database');
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateToken, requireRole, requireCompletedProfile } = require('../middleware/auth');
 
 const router = express.Router();
 
 // Apply Customer Authentication Middleware to all customer routes
 router.use(authenticateToken);
 router.use(requireRole('customer'));
+router.use(requireCompletedProfile);
 
 // Helper: is a stored coordinate pair usable? Treats NULL/undefined (missing),
 // non-numeric, and out-of-range values as invalid. Note Number(null) === 0, so the
@@ -1447,4 +1448,62 @@ function markCustomerConversationRead(req, res) {
 router.patch('/conversations/:id/read', markCustomerConversationRead);
 router.put('/conversations/:id/read', markCustomerConversationRead);
 
+// DELETE /api/customer/account - Immediate In-App Customer Account Deletion (Google Play Compliance)
+router.delete('/account', (req, res) => {
+  try {
+    const customerId = req.user.id;
+    const user = db.prepare('SELECT id, email, phone FROM users WHERE id = ?').get(customerId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Customer account not found' });
+    }
+
+    const deleteTx = db.transaction(() => {
+      const userBills = db.prepare('SELECT id FROM bills WHERE user_id = ?').all(customerId);
+      for (const b of userBills) {
+        db.prepare('DELETE FROM bill_items WHERE bill_id = ?').run(b.id);
+      }
+      db.prepare('DELETE FROM bills WHERE user_id = ?').run(customerId);
+
+      // 2. Erase financial wallet, lots, transactions, and ledger
+      db.prepare('DELETE FROM coin_lots WHERE user_id = ?').run(customerId);
+      db.prepare('DELETE FROM wallets WHERE user_id = ?').run(customerId);
+      db.prepare('DELETE FROM point_ledger WHERE user_id = ?').run(customerId);
+      db.prepare('DELETE FROM reward_transactions WHERE user_id = ?').run(customerId);
+
+      // 3. Erase redemptions & vouchers
+      db.prepare('DELETE FROM redemptions WHERE user_id = ?').run(customerId);
+
+      // 4. Erase ad sessions
+      db.prepare('DELETE FROM reward_sessions WHERE user_id = ?').run(customerId);
+      db.prepare('DELETE FROM vp52_coin_sessions WHERE user_id = ?').run(customerId);
+
+      // 5. Erase user feedback, ratings, favorites
+      db.prepare('DELETE FROM reviews WHERE user_id = ?').run(customerId);
+      db.prepare('DELETE FROM complaints WHERE user_id = ?').run(customerId);
+      db.prepare('DELETE FROM favorites WHERE user_id = ?').run(customerId);
+
+      // 6. Erase messaging threads and conversations
+      const conversations = db.prepare('SELECT id FROM conversations WHERE customer_id = ?').all(customerId);
+      for (const conv of conversations) {
+        db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(conv.id);
+      }
+      db.prepare('DELETE FROM conversations WHERE customer_id = ?').run(customerId);
+
+      // 7. Delete user account record
+      db.prepare('DELETE FROM users WHERE id = ?').run(customerId);
+    });
+
+    deleteTx();
+
+    return res.json({
+      success: true,
+      message: 'Your account and all associated personal data have been permanently deleted.'
+    });
+  } catch (error) {
+    console.error('Account deletion error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete account. Please try again or contact support.' });
+  }
+});
+
 module.exports = router;
+

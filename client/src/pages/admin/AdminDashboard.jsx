@@ -1,20 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
 import {
   Users,
   Store,
   Receipt,
-  Gift,
   ShieldCheck,
-  ArrowRight,
-  TrendingUp,
-  Award
+  ArrowRight
 } from 'lucide-react';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { token } = useAuth();
+  const { t } = useI18n();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -35,13 +34,13 @@ export default function AdminDashboard() {
       {/* Top Banner */}
       <div style={{ background: 'linear-gradient(135deg, #0B0B0B 0%, #17130A 50%, #0B0B0B 100%)', borderRadius: '20px', padding: '20px', marginBottom: '20px', border: '1px solid rgba(212, 175, 55, 0.25)', boxShadow: '0 8px 30px rgba(0,0,0,0.35)' }}>
         <span style={{ fontSize: '10px', fontWeight: 800, color: '#D4AF37', textTransform: 'uppercase', letterSpacing: '0.08em', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', padding: '4px 10px', borderRadius: '6px' }}>
-          SUPER ADMINISTRATOR PANEL
+          {t('superAdminPanel')}
         </span>
         <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', marginTop: '6px', marginBottom: '4px' }}>
-          Platform Analytics
+          {t('platformAnalytics')}
         </h1>
         <p style={{ fontSize: '13px', color: '#B8B8B8', margin: 0 }}>
-          Manage customers, verify physical merchants, and inspect audit logs.
+          {t('adminSubtitle')}
         </p>
       </div>
 
@@ -59,8 +58,8 @@ export default function AdminDashboard() {
             <ShieldCheck size={22} color="#050505" />
           </div>
           <div>
-            <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>Merchant Verification Queue</h3>
-            <span style={{ fontSize: '11px', color: '#F2D675' }}>Approve newly registered store accounts</span>
+            <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>{t('merchantQueueCard')}</h3>
+            <span style={{ fontSize: '11px', color: '#F2D675' }}>{t('merchantQueueSub')}</span>
           </div>
         </div>
         <ArrowRight size={18} color="#D4AF37" />
@@ -69,28 +68,28 @@ export default function AdminDashboard() {
       {/* Mobile Stackable KPI Cards Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
         <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Total Customers</span>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>{t('totalCustomersMetric')}</span>
           <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#FFFFFF', margin: '4px 0 0 0' }}>
             {stats ? (stats.totalCustomers || stats.total_customers || 5) : 5}
           </h2>
         </div>
 
         <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Verified Merchants</span>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>{t('verifiedMerchantsMetric')}</span>
           <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#D4AF37', margin: '4px 0 0 0' }}>
             {stats ? (stats.totalShops || stats.total_shops || 5) : 5}
           </h2>
         </div>
 
         <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Total Transactions</span>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>{t('totalTransactionsMetric')}</span>
           <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#F2D675', margin: '4px 0 0 0' }}>
             {stats ? (stats.totalRedemptions || stats.total_redemptions || 20) : 20}
           </h2>
         </div>
 
         <div style={{ background: '#111111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>Reward Points</span>
+          <span style={{ fontSize: '11px', color: '#B8B8B8', fontWeight: 700 }}>{t('rewardPointsMetric')}</span>
           <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#F2D675', margin: '4px 0 0 0' }}>
             🪙 {stats ? (stats.totalPoints || stats.total_points || '20.4K') : '20.4K'}
           </h2>
@@ -104,7 +103,7 @@ export default function AdminDashboard() {
         <div onClick={() => navigate('/admin/customers')} style={{ background: '#111111', borderRadius: '14px', padding: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Users size={20} color="#D4AF37" />
-            <span style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF' }}>Customer Accounts Management</span>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF' }}>{t('quickNavCustomers')}</span>
           </div>
           <ArrowRight size={16} color="#B8B8B8" />
         </div>
@@ -112,7 +111,7 @@ export default function AdminDashboard() {
         <div onClick={() => navigate('/admin/shops')} style={{ background: '#111111', borderRadius: '14px', padding: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Store size={20} color="#D4AF37" />
-            <span style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF' }}>Shops & Merchants Catalog</span>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF' }}>{t('quickNavShops')}</span>
           </div>
           <ArrowRight size={16} color="#B8B8B8" />
         </div>
@@ -120,7 +119,7 @@ export default function AdminDashboard() {
         <div onClick={() => navigate('/admin/transactions')} style={{ background: '#111111', borderRadius: '14px', padding: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <Receipt size={20} color="#D4AF37" />
-            <span style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF' }}>Redemption Audit Logs</span>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF' }}>{t('quickNavAudit')}</span>
           </div>
           <ArrowRight size={16} color="#B8B8B8" />
         </div>

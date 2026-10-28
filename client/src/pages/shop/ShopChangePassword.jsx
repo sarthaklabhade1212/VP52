@@ -88,12 +88,12 @@ export default function ShopChangePassword() {
             alt="VP52 Logo"
             draggable="false"
             style={{
-              width: '76px',
-              height: 'auto',
-              maxHeight: '76px',
+              width: '86px',
+              height: '86px',
               objectFit: 'contain',
               display: 'inline-block',
-              marginBottom: '12px'
+              marginBottom: '12px',
+              filter: 'drop-shadow(0 6px 20px rgba(212, 175, 55, 0.3))'
             }}
           />
           <div style={{ fontSize: '13px', fontWeight: 800, color: '#D4AF37', letterSpacing: '0.5px', marginBottom: '2px' }}>{APP_NAME}</div>

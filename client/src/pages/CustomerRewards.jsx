@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Tag, Store, ShieldCheck, X, QrCode, MapPin, CheckCircle2, ChevronRight, Award, Info, Sparkles } from 'lucide-react';
+import { useI18n } from '../i18n/I18nContext';
+import { Store, X, QrCode, CheckCircle2, ChevronRight } from 'lucide-react';
 
 const VP52_TIERS = [
   'Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Titanium',
@@ -11,6 +12,7 @@ const VP52_TIERS = [
 export default function CustomerRewards() {
   const navigate = useNavigate();
   const { user, token } = useAuth();
+  const { t } = useI18n();
 
   const [offers, setOffers] = useState([]);
   const [shops, setShops] = useState([]);
@@ -68,7 +70,7 @@ export default function CustomerRewards() {
     }
   }, [token]);
 
-  const categories = ['All', ...new Set(shops.map(s => s.category))];
+  const categories = ['All', ...new Set(shops.map(s => s.category).filter(Boolean))];
 
   const filteredOffers = selectedCategory === 'All'
     ? offers
@@ -111,7 +113,6 @@ export default function CustomerRewards() {
     }
   };
 
-  // Helper to derive tier discount for selected offer
   const getOfferDiscountForTier = (offer, tier) => {
     if (!offer) return 0;
     if (offer.tier_discounts) {
@@ -130,10 +131,10 @@ export default function CustomerRewards() {
       {/* Header & Summary */}
       <div style={{ marginBottom: '20px' }}>
         <h2 style={{ fontSize: '22px', color: '#FFFFFF', marginBottom: '4px', fontWeight: 800 }}>
-          Merchant Offers & VP52 Tier Savings
+          {t('merchantOffersTitle')}
         </h2>
         <p style={{ fontSize: '13px', color: '#B8B8B8', margin: 0 }}>
-          Select your coin tier, view tier-specific discounts, and redeem instant savings at partner stores!
+          {t('merchantOffersSubtitle')}
         </p>
       </div>
 
@@ -152,19 +153,19 @@ export default function CustomerRewards() {
       }}>
         <div>
           <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', display: 'block' }}>
-            YOUR MEMBERSHIP TIER
+            {t('yourMembershipTier')}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-            <span style={{ fontSize: '16px', fontWeight: 800, color: '#F2D675' }}>🏆 {currentLevel} MEMBER</span>
+            <span style={{ fontSize: '16px', fontWeight: 800, color: '#F2D675' }}>🏆 {currentLevel} {t('memberBadge')}</span>
             <span style={{ fontSize: '12px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', padding: '2px 8px', borderRadius: '6px', color: '#D4AF37', fontWeight: 700 }}>
-              Up to {discountCapPercent}% Max Cap
+              {t('upToMaxCap', { cap: discountCapPercent })}
             </span>
           </div>
         </div>
 
         <div style={{ textAlign: 'right' }}>
           <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.05em', display: 'block' }}>
-            TOTAL COIN BALANCE
+            {t('totalCoinBalance')}
           </span>
           <span style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675' }}>
             🪙 {availableCoins.toLocaleString()}
@@ -191,7 +192,7 @@ export default function CustomerRewards() {
               boxShadow: selectedCategory === cat ? '0 4px 12px rgba(212, 175, 55, 0.25)' : 'none'
             }}
           >
-            {cat}
+            {cat === 'All' ? t('categoryAll') : cat}
           </button>
         ))}
       </div>
@@ -250,9 +251,9 @@ export default function CustomerRewards() {
               </h4>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '12px', color: '#B8B8B8', marginBottom: '14px' }}>
-                <span>Maximum Discount: <strong style={{ color: '#F2D675' }}>₹{offer.max_discount_inr}</strong></span>
+                <span>{t('maxDiscountLabel')}: <strong style={{ color: '#F2D675' }}>₹{offer.max_discount_inr}</strong></span>
                 <span>•</span>
-                <span>Valid until: <strong>{new Date(offer.valid_until).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
+                <span>{t('validUntilLabel')}: <strong>{new Date(offer.valid_until).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
               </div>
 
               <div style={{
@@ -263,7 +264,7 @@ export default function CustomerRewards() {
                 borderTop: '1px solid rgba(212, 175, 55, 0.15)'
               }}>
                 <div>
-                  <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', fontWeight: 700 }}>AVAILABLE COINS</span>
+                  <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', fontWeight: 700 }}>{t('availableCoins')}</span>
                   <span style={{ fontSize: '15px', fontWeight: 800, color: '#F2D675' }}>
                     🪙 {availableCoins.toLocaleString()} Coins
                   </span>
@@ -275,7 +276,7 @@ export default function CustomerRewards() {
                   className="btn-primary"
                   style={{ padding: '10px 18px', fontSize: '13px', borderRadius: '12px' }}
                 >
-                  View & Redeem <ChevronRight size={16} color="#050505" />
+                  {t('viewAndRedeem')} <ChevronRight size={16} color="#050505" />
                 </button>
               </div>
             </div>
@@ -307,7 +308,7 @@ export default function CustomerRewards() {
                 {selectedOffer.title}
               </h4>
               <span style={{ fontSize: '13px', color: '#FFFFFF', fontWeight: 700 }}>
-                Max Discount: ₹{selectedOffer.max_discount_inr} • Valid until {new Date(selectedOffer.valid_until).toLocaleDateString()}
+                {t('maxDiscountLabel')}: ₹{selectedOffer.max_discount_inr} • {t('validUntilLabel')} {new Date(selectedOffer.valid_until).toLocaleDateString()}
               </span>
             </div>
 
@@ -315,9 +316,9 @@ export default function CustomerRewards() {
             {redeemResult ? (
               <div style={{ textAlign: 'center', background: '#151515', border: '1px solid #D4AF37', padding: '20px', borderRadius: '18px', marginBottom: '16px' }}>
                 <CheckCircle2 size={40} color="#F2D675" style={{ marginBottom: '10px' }} />
-                <h4 style={{ color: '#FFFFFF', fontSize: '18px', fontWeight: 800, margin: '0 0 6px 0' }}>Redemption QR Code Ready!</h4>
+                <h4 style={{ color: '#FFFFFF', fontSize: '18px', fontWeight: 800, margin: '0 0 6px 0' }}>{t('redemptionQrReady')}</h4>
                 <p style={{ color: '#B8B8B8', fontSize: '12px', margin: '0 0 14px 0' }}>
-                  Show this code to the merchant at checkout:
+                  {t('showCodeToMerchant')}
                 </p>
                 <div style={{ background: '#050505', border: '1px dashed #D4AF37', padding: '12px', borderRadius: '12px', fontSize: '20px', fontWeight: 800, color: '#F2D675', letterSpacing: '0.1em', marginBottom: '14px' }}>
                   {redeemResult.redemption_code}
@@ -331,7 +332,7 @@ export default function CustomerRewards() {
                 {/* SELECT COIN TIER FOR REDEMPTION */}
                 <div style={{ marginBottom: '16px' }}>
                   <label style={{ fontSize: '12px', color: '#B8B8B8', fontWeight: 700, display: 'block', marginBottom: '8px' }}>
-                    SELECT COIN TIER TO REDEEM:
+                    {t('selectCoinTierToRedeem')}
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
                     {VP52_TIERS.map(tierName => {
@@ -357,7 +358,7 @@ export default function CustomerRewards() {
                             🪙 {tierName} ({tierCoins})
                           </div>
                           <div style={{ fontSize: '11px', color: '#B8B8B8', marginTop: '2px' }}>
-                            {disc}% Discount
+                            {disc}% {t('tierDiscountBadge')}
                           </div>
                         </button>
                       );
@@ -368,15 +369,15 @@ export default function CustomerRewards() {
                 {/* TIER REDEMPTION SUMMARY CARD */}
                 <div style={{ background: '#151515', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '16px', marginBottom: '20px', fontSize: '13px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ color: '#B8B8B8' }}>Selected Coin Tier:</span>
+                    <span style={{ color: '#B8B8B8' }}>{t('selectedCoinTier')}</span>
                     <span style={{ fontWeight: 800, color: '#F2D675' }}>🪙 {selectedTier}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ color: '#B8B8B8' }}>Available Tier Balance:</span>
+                    <span style={{ color: '#B8B8B8' }}>{t('availableTierBalance')}</span>
                     <span style={{ fontWeight: 800, color: '#FFFFFF' }}>{(tierBreakdown[selectedTier]?.coins || 0)} Coins</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#B8B8B8' }}>Applicable Tier Discount:</span>
+                    <span style={{ color: '#B8B8B8' }}>{t('applicableTierDiscount')}</span>
                     <span style={{ fontWeight: 800, color: '#F2D675' }}>{getOfferDiscountForTier(selectedOffer, selectedTier)}% OFF</span>
                   </div>
                 </div>
@@ -395,7 +396,7 @@ export default function CustomerRewards() {
                     className="btn-primary"
                     style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}
                   >
-                    {isRedeeming ? 'Redeeming...' : `Redeem with ${selectedTier} Coins 🎉`}
+                    {isRedeeming ? t('redeemingProgress') : t('redeemWithTierCoins', { tier: selectedTier })}
                   </button>
 
                   <button
@@ -404,7 +405,7 @@ export default function CustomerRewards() {
                     className="btn-secondary"
                     style={{ width: '100%', padding: '12px', fontSize: '13px', justifyContent: 'center' }}
                   >
-                    <QrCode size={16} color="#B8B8B8" /> Show Customer Identity QR
+                    <QrCode size={16} color="#B8B8B8" /> {t('showIdentityQrBtn')}
                   </button>
                 </div>
               </>

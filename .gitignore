@@ -7,6 +7,7 @@ dist/
 client/dist/
 build/
 *.tsbuildinfo
+*.tar.gz
 
 # ---- Secrets & local env ----------------------------------------------------
 # Ignore real env files (they may contain secrets or machine/deploy-specific values).

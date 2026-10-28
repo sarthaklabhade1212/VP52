@@ -302,10 +302,65 @@ function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS account_deletion_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      identifier TEXT NOT NULL,
+      reason TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_otp_challenges (
+      id TEXT PRIMARY KEY,
+      phone TEXT NOT NULL,
+      otp_hash TEXT NOT NULL,
+      attempts INTEGER DEFAULT 0,
+      max_attempts INTEGER DEFAULT 5,
+      expires_at DATETIME NOT NULL,
+      consumed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ip_address TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_otp_phone ON customer_otp_challenges(phone, created_at);
+
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT UNIQUE NOT NULL,
+      revoked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_revoked_tokens ON revoked_tokens(token_hash);
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_password_reset_token ON password_reset_tokens(token_hash);
   `);
 
   // Migrations for safety
   try {
+    const { normalizePhoneNumber } = require('../utils/phone');
+    const usersWithPhone = db.prepare("SELECT id, phone FROM users WHERE phone IS NOT NULL").all();
+    const updatePhoneStmt = db.prepare("UPDATE users SET phone = ? WHERE id = ?");
+    for (const u of usersWithPhone) {
+      const res = normalizePhoneNumber(u.phone);
+      if (res.isValid && res.normalized && res.normalized !== u.phone) {
+        try {
+          updatePhoneStmt.run(res.normalized, u.id);
+        } catch (e) {}
+      }
+    }
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) WHERE phone IS NOT NULL;");
     const shopColumns = db.prepare("PRAGMA table_info(shops)").all().map(c => c.name);
     if (!shopColumns.includes('verification_status')) db.exec("ALTER TABLE shops ADD COLUMN verification_status TEXT DEFAULT 'approved';");
     if (!shopColumns.includes('owner_name')) db.exec("ALTER TABLE shops ADD COLUMN owner_name TEXT;");
@@ -326,6 +381,10 @@ function initDatabase() {
     // NULL and auth_provider defaulting to 'local'; no data is rewritten or removed.
     if (!userColumns.includes('google_subject_id')) db.exec("ALTER TABLE users ADD COLUMN google_subject_id TEXT;");
     if (!userColumns.includes('auth_provider')) db.exec("ALTER TABLE users ADD COLUMN auth_provider TEXT DEFAULT 'local';");
+    if (!userColumns.includes('profile_completed')) {
+      db.exec("ALTER TABLE users ADD COLUMN profile_completed INTEGER DEFAULT 0;");
+      db.exec("UPDATE users SET profile_completed = 1 WHERE phone IS NOT NULL OR auth_provider = 'local';");
+    }
     db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_subject_id ON users(google_subject_id) WHERE google_subject_id IS NOT NULL;");
 
     const levelColumns = db.prepare("PRAGMA table_info(reward_levels)").all().map(c => c.name);

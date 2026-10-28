@@ -28,12 +28,12 @@ export default function LoginSelector() {
             alt="VP52 Logo"
             draggable="false"
             style={{
-              width: '90px',
-              height: 'auto',
-              maxHeight: '90px',
+              width: '96px',
+              height: '96px',
               objectFit: 'contain',
               display: 'inline-block',
-              marginBottom: '16px'
+              marginBottom: '16px',
+              filter: 'drop-shadow(0 6px 20px rgba(212, 175, 55, 0.3))'
             }}
           />
           <h1 style={{ fontSize: '34px', color: '#FFFFFF', marginBottom: '8px', letterSpacing: '0.02em' }}>
@@ -68,7 +68,7 @@ export default function LoginSelector() {
                 background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px'
               }}>
-                <img src={vp52Logo} alt="VP52" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
+                <img src={vp52Logo} alt="VP52" style={{ width: '34px', height: '34px', objectFit: 'contain' }} />
               </div>
               <span className="badge badge-active" style={{ marginBottom: '8px' }}>{t('customerRoleBadge')}</span>
               <h3 style={{ fontSize: '20px', color: '#FFFFFF', marginBottom: '6px' }}>{t('customerAppTitle')}</h3>

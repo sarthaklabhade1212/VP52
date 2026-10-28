@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Receipt, Plus, Trash2, CheckCircle2, User, ShoppingBag, ShieldCheck } from 'lucide-react';
+import { useI18n } from '../../i18n/I18nContext';
+import { Receipt, Trash2, CheckCircle2 } from 'lucide-react';
 
 export default function MerchantBilling() {
   const { token } = useAuth();
+  const { t } = useI18n();
   const [products, setProducts] = useState([]);
   const [customerIdentifier, setCustomerIdentifier] = useState('');
   const [billItems, setBillItems] = useState([
@@ -92,17 +94,17 @@ export default function MerchantBilling() {
     <div style={{ maxWidth: '900px', background: '#050505' }}>
       <div style={{ marginBottom: '24px' }}>
         <h2 style={{ fontSize: '24px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
-          <Receipt size={26} color="#D4AF37" /> Itemized Bill & Server Reward Calculator
+          <Receipt size={26} color="#D4AF37" /> {t('billingHeader')}
         </h2>
         <p style={{ fontSize: '14px', color: '#B8B8B8' }}>
-          Combine reward-eligible and non-eligible items into a single bill. Points are calculated server-side.
+          {t('billingSubheader')}
         </p>
       </div>
 
       {billResult ? (
         <div style={{ background: '#111111', borderRadius: '24px', padding: '28px', border: '1px solid rgba(212, 175, 55, 0.3)', boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#F2D675', padding: '6px 14px', borderRadius: '99px', fontWeight: 800, fontSize: '13px', marginBottom: '16px' }}>
-            <CheckCircle2 size={16} color="#F2D675" /> ✅ BILL GENERATED & POINTS AWARDED
+            <CheckCircle2 size={16} color="#F2D675" /> {t('billingSuccessNotice')}
           </div>
 
           <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', marginBottom: '4px' }}>
@@ -114,17 +116,17 @@ export default function MerchantBilling() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>Total Bill</span>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>{t('totalItemsBill')}</span>
               <div style={{ fontSize: '22px', fontWeight: 800, color: '#FFFFFF' }}>₹{billResult.total_amount}</div>
             </div>
 
             <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>Eligible Subtotal</span>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>{t('rewardEligibleAmount')}</span>
               <div style={{ fontSize: '22px', fontWeight: 800, color: '#F2D675' }}>₹{billResult.eligible_amount}</div>
             </div>
 
             <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>Points Awarded</span>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>Reward Coins</span>
               <div style={{ fontSize: '22px', fontWeight: 800, color: '#D4AF37' }}>+🪙 {billResult.points_awarded}</div>
             </div>
           </div>
@@ -144,11 +146,11 @@ export default function MerchantBilling() {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', marginBottom: '20px' }}>
               <thead>
                 <tr style={{ background: '#151515', borderBottom: '1px solid rgba(212, 175, 55, 0.15)', color: '#B8B8B8' }}>
-                  <th style={{ padding: '8px' }}>Item</th>
-                  <th style={{ padding: '8px' }}>Price</th>
-                  <th style={{ padding: '8px' }}>Qty</th>
+                  <th style={{ padding: '8px' }}>{t('productNameHeader')}</th>
+                  <th style={{ padding: '8px' }}>{t('priceHeader')}</th>
+                  <th style={{ padding: '8px' }}>{t('qtyHeader')}</th>
                   <th style={{ padding: '8px' }}>Eligible?</th>
-                  <th style={{ padding: '8px' }}>Subtotal</th>
+                  <th style={{ padding: '8px' }}>{t('subtotalHeader')}</th>
                   <th style={{ padding: '8px' }}></th>
                 </tr>
               </thead>
@@ -198,18 +200,18 @@ export default function MerchantBilling() {
 
             <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', marginBottom: '20px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#B8B8B8' }}>
-                <span>Total Items Bill:</span> <strong style={{ color: '#FFFFFF' }}>₹{totalBillAmount}</strong>
+                <span>{t('totalItemsBill')}:</span> <strong style={{ color: '#FFFFFF' }}>₹{totalBillAmount}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#F2D675', fontWeight: 700 }}>
-                <span>Reward Eligible Amount:</span> <strong>₹{eligibleAmount}</strong>
+                <span>{t('rewardEligibleAmount')}:</span> <strong>₹{eligibleAmount}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#D4AF37', fontWeight: 800, paddingTop: '6px', borderTop: '1px solid rgba(212, 175, 55, 0.15)' }}>
-                <span>Estimated Points Earned:</span> <strong>+🪙 {estimatedPoints} Pts</strong>
+                <span>Estimated Coins:</span> <strong>+🪙 {estimatedPoints}</strong>
               </div>
             </div>
 
             <button onClick={handleGenerateBill} disabled={loading} className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}>
-              {loading ? 'Processing...' : 'Generate Bill & Award Points'}
+              {loading ? 'Processing...' : t('approveAndCompleteBilling')}
             </button>
           </div>
         </div>

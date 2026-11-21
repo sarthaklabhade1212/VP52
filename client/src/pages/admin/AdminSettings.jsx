@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
+import { parseApiResponse } from '../../utils/api';
 import { Settings, Save, CheckCircle2, Award, Clock, ShieldAlert, Coins } from 'lucide-react';
 
 export default function AdminSettings() {
   const { token } = useAuth();
+  const { t } = useI18n();
+
+  const getTierLabel = (levelName) => {
+    if (!levelName) return '';
+    const key = `tier_${levelName}`;
+    const label = t(key);
+    return label === key ? levelName : label;
+  };
   const [settings, setSettings] = useState({
     session_duration_hours: '6',
     ads_per_session: '3',
@@ -21,9 +31,10 @@ export default function AdminSettings() {
     fetch('/api/admin/reward-settings', {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
+      .then(parseApiResponse)
+      .then(parsed => {
+        const data = parsed.data;
+        if (parsed.ok && data && data.success) {
           if (data.settings) setSettings(prev => ({ ...prev, ...data.settings }));
           if (data.levels) setLevels(data.levels || []);
         }
@@ -46,9 +57,10 @@ export default function AdminSettings() {
         },
         body: JSON.stringify({ settings, levels })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setMessage('Reward Economy & Session Rules updated and logged to audit logs!');
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success) {
+        setMessage(t('settingsUpdatedSuccess'));
         setTimeout(() => setMessage(null), 4000);
       }
     } catch (err) {
@@ -68,10 +80,10 @@ export default function AdminSettings() {
     <div style={{ maxWidth: '700px', margin: '0 auto', color: '#FFFFFF', background: '#050505' }}>
       <div style={{ marginBottom: '24px' }}>
         <h2 style={{ fontSize: '24px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 800 }}>
-          <Settings size={26} color="#D4AF37" /> Platform Reward Economy Settings
+          <Settings size={26} color="#D4AF37" /> {t('adminSettingsTitle')}
         </h2>
         <p style={{ fontSize: '14px', color: '#B8B8B8' }}>
-          Configure 6-hour session rules, ad limits, coin expiry, and membership discount caps.
+          {t('adminSettingsSub')}
         </p>
       </div>
 
@@ -85,37 +97,37 @@ export default function AdminSettings() {
         {/* Section 1: Reward Sessions & Coin Economy */}
         <div style={{ background: '#111111', borderRadius: '20px', border: '1px solid rgba(212, 175, 55, 0.15)', padding: '24px' }}>
           <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#FFFFFF', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Clock size={20} color="#D4AF37" /> Reward Session & Coin Economy Rules
+            <Clock size={20} color="#D4AF37" /> {t('rewardSessionRulesTitle')}
           </h3>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Session Duration (Hours)</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>{t('sessionDurationHoursLabel')}</label>
               <input type="number" className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={settings.session_duration_hours} onChange={e => setSettings({ ...settings, session_duration_hours: e.target.value })} />
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Max Ads Per Session</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>{t('maxAdsPerSessionLabel')}</label>
               <input type="number" className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={settings.ads_per_session} onChange={e => setSettings({ ...settings, ads_per_session: e.target.value })} />
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Max Sessions Per 24 Hours</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>{t('maxSessions24hLabel')}</label>
               <input type="number" className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={settings.max_sessions_per_day} onChange={e => setSettings({ ...settings, max_sessions_per_day: e.target.value })} />
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Coins Awarded Per Ad</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>{t('coinsAwardedPerAdLabel')}</label>
               <input type="number" className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={settings.coins_per_ad} onChange={e => setSettings({ ...settings, coins_per_ad: e.target.value })} />
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Coin Expiry (Days)</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>{t('coinExpiryDaysLabel')}</label>
               <input type="number" className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF' }} value={settings.coin_expiry_days} onChange={e => setSettings({ ...settings, coin_expiry_days: e.target.value })} />
             </div>
 
             <div>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>Coin Value (INR ₹)</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '4px' }}>{t('coinRedemptionMultiplierLabel')}</label>
               <input type="number" disabled className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#F2D675', fontWeight: 800 }} value={settings.coin_value_inr} />
             </div>
           </div>
@@ -124,22 +136,22 @@ export default function AdminSettings() {
         {/* Section 2: Membership Tier Thresholds & Discount Caps */}
         <div style={{ background: '#111111', borderRadius: '20px', border: '1px solid rgba(212, 175, 55, 0.15)', padding: '24px' }}>
           <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#FFFFFF', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Award size={20} color="#D4AF37" /> Membership Tiers & Discount Caps
+            <Award size={20} color="#D4AF37" /> {t('membershipTiersCapsTitle')}
           </h3>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {levels.map((lvl, index) => (
               <div key={lvl.level_name} style={{ background: '#151515', padding: '14px', borderRadius: '12px', border: '1px solid rgba(212, 175, 55, 0.15)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', alignItems: 'center' }}>
                 <div>
-                  <strong style={{ color: '#F2D675', fontSize: '14px' }}>{lvl.level_name}</strong>
-                  <span style={{ fontSize: '11px', color: '#777777', display: 'block' }}>Tier Name</span>
+                  <strong style={{ color: '#F2D675', fontSize: '14px' }}>{getTierLabel(lvl.level_name)}</strong>
+                  <span style={{ fontSize: '11px', color: '#777777', display: 'block' }}>{t('tierNameSub')}</span>
                 </div>
                 <div>
-                  <label style={{ fontSize: '11px', color: '#B8B8B8' }}>Min Lifetime Coins</label>
+                  <label style={{ fontSize: '11px', color: '#B8B8B8' }}>{t('minLifetimeCoinsLabel')}</label>
                   <input type="number" className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#FFFFFF', padding: '6px 10px', fontSize: '13px' }} value={lvl.min_points} onChange={e => handleLevelChange(index, 'min_points', e.target.value)} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '11px', color: '#B8B8B8' }}>Max Discount Cap %</label>
+                  <label style={{ fontSize: '11px', color: '#B8B8B8' }}>{t('maxDiscountCapPctLabel')}</label>
                   <input type="number" className="form-input" style={{ background: '#111111', border: '1px solid #303030', color: '#F2D675', padding: '6px 10px', fontSize: '13px', fontWeight: 800 }} value={lvl.discount_cap_percent} onChange={e => handleLevelChange(index, 'discount_cap_percent', e.target.value)} />
                 </div>
               </div>
@@ -153,7 +165,7 @@ export default function AdminSettings() {
           className="btn-primary"
           style={{ padding: '16px', fontSize: '15px', justifyContent: 'center' }}
         >
-          <Save size={18} color="#050505" /> {saving ? 'Saving...' : 'Save Configuration Changes & Update Economy'}
+          <Save size={18} color="#050505" /> {saving ? t('adminSavingProgress') : t('saveEconomyConfigBtn')}
         </button>
       </form>
     </div>

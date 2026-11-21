@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
+import { parseApiResponse, resolveApiErrorMessage, resolveNetworkErrorMessage } from '../../utils/api';
+import { formatInr, formatCoins } from '../../utils/formatters';
 import { QrCode, Search, CheckCircle2, XCircle, AlertTriangle, Store, User, Award, ShieldCheck } from 'lucide-react';
 
 export default function AdminQRVerification() {
   const { token } = useAuth();
+  const { t, locale } = useI18n();
   const [inputCode, setInputCode] = useState('RW-2026-000123');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+
+  const getStatusLabel = (status) => {
+    const key = `adminStatusLabel_${String(status || '').toLowerCase()}`;
+    const res = t(key);
+    return res === key ? status : res;
+  };
 
   const handleVerify = async (codeToVerify) => {
     const code = (codeToVerify || inputCode).trim();
@@ -24,13 +34,14 @@ export default function AdminQRVerification() {
       const res = await fetch(`/api/admin/verify-qr/${encodeURIComponent(code)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Redemption code not found');
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (!parsed.ok || !data || !data.success) {
+        throw new Error(resolveApiErrorMessage(parsed, t, 'redemptionCodeNotFoundErr'));
       }
       setResult(data);
     } catch (err) {
-      setError(err.message);
+      setError(resolveNetworkErrorMessage(err, t, 'redemptionCodeNotFoundErr'));
     } finally {
       setLoading(false);
     }
@@ -56,15 +67,16 @@ export default function AdminQRVerification() {
         body: JSON.stringify({ redemption_code: result.redemption.redemption_code })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to verify redemption');
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (!parsed.ok || !data || !data.success) {
+        throw new Error(resolveApiErrorMessage(parsed, t, 'failedVerifyRedemptionErr'));
       }
 
       setSuccessMsg(data.message);
       handleVerify(result.redemption.redemption_code);
     } catch (err) {
-      setError(err.message);
+      setError(resolveNetworkErrorMessage(err, t, 'failedVerifyRedemptionErr'));
     } finally {
       setVerifying(false);
     }
@@ -74,10 +86,10 @@ export default function AdminQRVerification() {
     <div style={{ maxWidth: '800px', margin: '0 auto', background: '#050505' }}>
       <div style={{ marginBottom: '24px' }}>
         <h2 style={{ fontSize: '24px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 800 }}>
-          <QrCode size={28} color="#D4AF37" /> Physical Shop QR Verification
+          <QrCode size={28} color="#D4AF37" /> {t('adminQrVerifTitle')}
         </h2>
         <p style={{ fontSize: '14px', color: '#B8B8B8' }}>
-          Enter or scan a customer's redemption code (e.g. RW-2026-000123) to verify and apply shop discount.
+          {t('adminQrVerifSub')}
         </p>
       </div>
 
@@ -91,17 +103,17 @@ export default function AdminQRVerification() {
         marginBottom: '28px'
       }}>
         <label style={{ fontSize: '13px', fontWeight: 700, color: '#B8B8B8', marginBottom: '8px', display: 'block' }}>
-          ENTER REDEMPTION CODE / SCAN PAYLOAD
+          {t('enterRedemptionCodeLabel')}
         </label>
 
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <div style={{ flex: 1, position: 'relative' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '200px', position: 'relative' }}>
             <Search size={20} color="#C9A227" style={{ position: 'absolute', left: '16px', top: '16px' }} />
             <input
               type="text"
               className="form-input"
               style={{ paddingLeft: '48px', fontSize: '18px', fontWeight: 800, letterSpacing: '0.05em', color: '#F2D675' }}
-              placeholder="e.g. RW-2026-000123"
+              placeholder={t('sampleRedemptionCodePlaceholder')}
               value={inputCode}
               onChange={(e) => setInputCode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleVerify()}
@@ -109,12 +121,13 @@ export default function AdminQRVerification() {
           </div>
 
           <button
+            type="button"
             onClick={() => handleVerify()}
             disabled={loading}
             className="btn-primary"
             style={{ padding: '0 24px', fontSize: '15px' }}
           >
-            {loading ? 'Checking...' : 'Verify Code'}
+            {loading ? t('checkingBtn') : t('verifyCodeBtn')}
           </button>
         </div>
       </div>
@@ -149,10 +162,10 @@ export default function AdminQRVerification() {
           border: '1px solid rgba(212, 175, 55, 0.3)',
           boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
             <div>
               <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#B8B8B8', fontWeight: 700 }}>
-                REDEMPTION VERIFICATION RESULT
+                {t('redemptionVerifResultUpper')}
               </span>
               <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF' }}>
                 {result.redemption.redemption_code}
@@ -161,15 +174,15 @@ export default function AdminQRVerification() {
 
             {result.redemption.status === 'ACTIVE' ? (
               <span className="badge badge-active" style={{ fontSize: '14px', padding: '8px 16px' }}>
-                <CheckCircle2 size={16} color="#F2D675" /> VALID & ACTIVE
+                <CheckCircle2 size={16} color="#F2D675" /> {t('validAndActiveUpper')}
               </span>
             ) : result.redemption.status === 'USED' ? (
               <span className="badge badge-used" style={{ fontSize: '14px', padding: '8px 16px' }}>
-                <CheckCircle2 size={16} color="#B8B8B8" /> ALREADY USED
+                <CheckCircle2 size={16} color="#B8B8B8" /> {t('alreadyUsedUpper')}
               </span>
             ) : (
               <span className="badge badge-expired" style={{ fontSize: '14px', padding: '8px 16px' }}>
-                <XCircle size={16} color="#ef4444" /> EXPIRED
+                <XCircle size={16} color="#ef4444" /> {t('expiredUpper')}
               </span>
             )}
           </div>
@@ -186,7 +199,7 @@ export default function AdminQRVerification() {
           }}>
             <div>
               <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                <Store size={14} color="#D4AF37" /> Physical Shop
+                <Store size={14} color="#D4AF37" /> {t('physicalShopLabel')}
               </span>
               <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF' }}>{result.redemption.shop_name}</h4>
               <span style={{ fontSize: '12px', color: '#B8B8B8' }}>{result.redemption.shop_address}</span>
@@ -194,23 +207,25 @@ export default function AdminQRVerification() {
 
             <div>
               <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px' }}>
-                <User size={14} color="#D4AF37" /> Customer Name
+                <User size={14} color="#D4AF37" /> {t('customerNameLabel')}
               </span>
               <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF' }}>{result.redemption.customer_name}</h4>
               <span style={{ fontSize: '12px', color: '#B8B8B8' }}>{result.redemption.customer_email}</span>
             </div>
 
             <div>
-              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', marginBottom: '2px' }}>Discount Offered</span>
-              <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675' }}>{result.redemption.discount_percent}% OFF</h3>
-              <span style={{ fontSize: '12px', color: '#B8B8B8' }}>Max Discount: ₹{result.redemption.max_discount_inr}</span>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', marginBottom: '2px' }}>{t('discountOfferedLabel')}</span>
+              <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675' }}>{t('pctOffLabel', { pct: result.redemption.discount_percent })}</h3>
+              <span style={{ fontSize: '12px', color: '#B8B8B8' }}>{t('maxDiscountValueLine', { max: formatInr(result.redemption.max_discount_inr, locale) })}</span>
             </div>
 
             <div>
-              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', marginBottom: '2px' }}>Points Deducted</span>
-              <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675' }}>{result.redemption.points_deducted} Pts</h3>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', marginBottom: '2px' }}>{t('pointsDeductedLabel')}</span>
+              <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675' }}>{formatCoins(result.redemption.points_deducted, locale, t('coinsUnit'))}</h3>
               <span style={{ fontSize: '12px', color: '#B8B8B8' }}>
-                {result.redemption.redeemed_at ? `Used at ${new Date(result.redemption.redeemed_at).toLocaleString()}` : `Created ${new Date(result.redemption.created_at).toLocaleString()}`}
+                {result.redemption.redeemed_at
+                  ? t('usedAtTime', { time: new Date(result.redemption.redeemed_at).toLocaleString(locale) })
+                  : t('createdAtTime', { time: new Date(result.redemption.created_at).toLocaleString(locale) })}
               </span>
             </div>
           </div>
@@ -218,17 +233,18 @@ export default function AdminQRVerification() {
           {/* Action Button */}
           {result.redemption.status === 'ACTIVE' ? (
             <button
+              type="button"
               onClick={handleMarkAsUsed}
               disabled={verifying}
               className="btn-primary"
               style={{ width: '100%', padding: '18px', fontSize: '16px', justifyContent: 'center' }}
             >
               <ShieldCheck size={22} color="#050505" />
-              {verifying ? 'Verifying & Applying...' : 'MARK AS USED (APPROVE DISCOUNT)'}
+              {verifying ? t('verifyingApplyingBtn') : t('markAsUsedBtn')}
             </button>
           ) : (
             <div style={{ background: '#151515', color: '#B8B8B8', padding: '14px', borderRadius: '12px', textAlign: 'center', fontWeight: 700, fontSize: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-              ⚠️ Redemption cannot be used again (Status: {result.redemption.status})
+              {t('redemptionCannotReuseWarn', { status: getStatusLabel(result.redemption.status) })}
             </div>
           )}
         </div>

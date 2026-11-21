@@ -1,0 +1,7 @@
+*.jks
+*.keystore
+*.pem
+vp52-release-key.jks
+vp52-upload-2026.jks
+vp52-upload-2026.pem
+vp52-upload-certificate.pem

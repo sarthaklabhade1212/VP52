@@ -94,24 +94,23 @@ export default function CustomerLogin() {
       if (code === 'not_configured') {
         setError(
           err.message ||
-          t('googleNotConfigured') ||
-          'Google Cloud OAuth is not configured for this build.'
+          t('googleNotConfigured')
         );
       } else if (code === 'reauth_failed') {
         setError(
           err.message ||
-          'Google authentication could not be completed. Please ensure your device has internet connectivity to Google services, and that your account is registered as an authorized test user in Google Cloud Console if the project is in Testing mode.'
+          t('googleReauthFailed')
         );
       } else if (code === 'unavailable') {
-        setError(t('googleUnavailable') || 'Google sign-in is only available in the mobile app.');
+        setError(t('googleUnavailable'));
       } else if (code === 'network' || (err && /network|failed to fetch/i.test(err.message || ''))) {
         setError(
           err.message && (err.message.includes('Unable to reach server') || err.message.includes('Network error'))
             ? err.message
-            : (t('googleNetworkError') || 'Network error during Google sign-in. Please check your internet connection.')
+            : t('googleNetworkError')
         );
       } else {
-        setError(err.message || t('googleAuthFailed') || 'Google sign-in failed. Please try again.');
+        setError(err.message || t('googleAuthFailed'));
       }
     } finally {
       setGoogleLoading(false);
@@ -389,10 +388,10 @@ export default function CustomerLogin() {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#D4AF37', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
                 <ShieldCheck size={16} />
-                <span>Fast & Secure Verification</span>
+                <span>{t('fastSecureVerification')}</span>
               </div>
               <p style={{ margin: 0, fontSize: '12px', color: '#888888', lineHeight: 1.45 }}>
-                New customers will complete full name, mobile number, and password setup in the next step. Returning customers sign in instantly.
+                {t('googleOnboardingHint')}
               </p>
             </div>
           </div>
@@ -432,7 +431,7 @@ export default function CustomerLogin() {
                       fontSize: '14px',
                       boxSizing: 'border-box'
                     }}
-                    placeholder="John Doe"
+                    placeholder={t('namePlaceholder')}
                     value={formData.full_name}
                     onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                   />
@@ -563,7 +562,7 @@ export default function CustomerLogin() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showPassword ? t('hidePasswordAria') : t('showPasswordAria')}
                   style={{
                     position: 'absolute',
                     right: '12px',
@@ -617,7 +616,7 @@ export default function CustomerLogin() {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                    aria-label={showConfirmPassword ? t('hideConfirmPasswordAria') : t('showConfirmPasswordAria')}
                     style={{
                       position: 'absolute',
                       right: '12px',

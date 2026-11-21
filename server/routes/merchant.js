@@ -1,19 +1,240 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../db/database');
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const {
+  authenticateToken,
+  requireRole,
+  requireApprovedMerchant,
+  requireMerchantOnboarding
+} = require('../middleware/auth');
 
 const router = express.Router();
 
-// Apply Merchant Authentication Middleware
+// Explicit pending-merchant onboarding routes ONLY (never expose active merchant operations).
+router.get('/onboarding/status', authenticateToken, requireMerchantOnboarding, (req, res) => {
+  const shop = req.merchantShop;
+  return res.json({
+    success: true,
+    onboarding: {
+      id: shop.id,
+      shop_code: shop.shop_code,
+      name: shop.name,
+      owner_name: shop.owner_name,
+      email: shop.email,
+      phone: shop.phone,
+      category: shop.category,
+      subcategory: shop.subcategory,
+      status: shop.status,
+      verification_status: shop.verification_status,
+      rejection_reason: shop.rejection_reason || null,
+      logo_url: shop.logo_url || null,
+      cover_photo_url: shop.cover_photo_url || null
+    }
+  });
+});
+
+router.put('/onboarding/photos', authenticateToken, requireMerchantOnboarding, (req, res) => {
+  try {
+    const shop = req.merchantShop;
+    if (shop.status !== 'pending' || shop.verification_status !== 'pending') {
+      return res.status(403).json({
+        success: false,
+        error: 'Onboarding photo updates are only permitted while your merchant application is pending review.'
+      });
+    }
+
+    const { logo_url, cover_photo_url } = req.body || {};
+    const validUploadPath = (val) =>
+      val === undefined ||
+      val === null ||
+      (typeof val === 'string' && /^\/uploads\/[a-zA-Z0-9._-]+$/.test(val.trim()));
+
+    if (!validUploadPath(logo_url) || !validUploadPath(cover_photo_url)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid uploaded image reference.'
+      });
+    }
+
+    const cleanLogo = typeof logo_url === 'string' ? logo_url.trim() : null;
+    const cleanCover = typeof cover_photo_url === 'string' ? cover_photo_url.trim() : null;
+    if (!cleanLogo && !cleanCover) {
+      return res.status(400).json({ success: false, error: 'At least one uploaded photo URL is required.' });
+    }
+
+    const nextImageUrl = cleanCover || cleanLogo || null;
+    db.prepare(`
+      UPDATE shops
+      SET logo_url = COALESCE(?, logo_url),
+          cover_photo_url = COALESCE(?, cover_photo_url),
+          image_url = COALESCE(?, image_url)
+      WHERE id = ? AND status = 'pending' AND verification_status = 'pending'
+    `).run(cleanLogo, cleanCover, nextImageUrl, shop.id);
+
+    const updated = db.prepare(`
+      SELECT id, shop_code, name, status, verification_status, logo_url, cover_photo_url, image_url
+      FROM shops WHERE id = ?
+    `).get(shop.id);
+
+    return res.json({
+      success: true,
+      message: 'Onboarding photos attached to merchant application.',
+      shop: updated
+    });
+  } catch (error) {
+    console.error('Onboarding photo update error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to save onboarding photos.' });
+  }
+});
+
+// Apply Strict Approved Merchant Authentication Middleware to all operational merchant routes
 router.use(authenticateToken);
 router.use(requireRole('shop'));
+router.use(requireApprovedMerchant);
+
+// 0. Merchant Shop Details & Settings
+router.get('/my-shop', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const shop = db.prepare('SELECT * FROM shops WHERE id = ?').get(shopId);
+    if (!shop) {
+      return res.status(404).json({ success: false, error: 'Shop not found' });
+    }
+    const photos = db.prepare('SELECT * FROM shop_photos WHERE shop_id = ? ORDER BY is_cover DESC, id ASC').all(shopId);
+    return res.json({ success: true, shop: { ...shop, photos } });
+  } catch (error) {
+    console.error('Fetch my-shop error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch shop details' });
+  }
+});
+
+router.put('/my-shop', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const {
+      name, description, phone, whatsapp_number, subcategory,
+      address, area_locality, city, district, state, pincode,
+      opening_time, closing_time, business_hours, is_temporarily_closed,
+      logo_url, cover_photo_url, image_url
+    } = req.body || {};
+
+    const nextImageUrl = image_url || cover_photo_url || logo_url || null;
+
+    db.prepare(`
+      UPDATE shops
+      SET name = COALESCE(?, name),
+          description = COALESCE(?, description),
+          phone = COALESCE(?, phone),
+          whatsapp_number = COALESCE(?, whatsapp_number),
+          subcategory = COALESCE(?, subcategory),
+          address = COALESCE(?, address),
+          area_locality = COALESCE(?, area_locality),
+          city = COALESCE(?, city),
+          district = COALESCE(?, district),
+          state = COALESCE(?, state),
+          pincode = COALESCE(?, pincode),
+          opening_time = COALESCE(?, opening_time),
+          closing_time = COALESCE(?, closing_time),
+          business_hours = COALESCE(?, business_hours),
+          is_temporarily_closed = COALESCE(?, is_temporarily_closed),
+          logo_url = COALESCE(?, logo_url),
+          cover_photo_url = COALESCE(?, cover_photo_url),
+          image_url = CASE
+            WHEN ? IS NOT NULL AND (image_url IS NULL OR image_url = '' OR image_url LIKE 'https://images.unsplash.com/%')
+            THEN ?
+            ELSE COALESCE(?, image_url)
+          END
+      WHERE id = ?
+    `).run(
+      name ?? null,
+      description ?? null,
+      phone ?? null,
+      whatsapp_number ?? null,
+      subcategory ?? null,
+      address ?? null,
+      area_locality ?? null,
+      city ?? null,
+      district ?? null,
+      state ?? null,
+      pincode ?? null,
+      opening_time ?? null,
+      closing_time ?? null,
+      business_hours ? (typeof business_hours === 'string' ? business_hours : JSON.stringify(business_hours)) : null,
+      is_temporarily_closed !== undefined ? (is_temporarily_closed ? 1 : 0) : null,
+      logo_url ?? null,
+      cover_photo_url ?? null,
+      nextImageUrl,
+      nextImageUrl,
+      image_url ?? null,
+      shopId
+    );
+
+    const updated = db.prepare('SELECT * FROM shops WHERE id = ?').get(shopId);
+    return res.json({ success: true, message: 'Shop profile updated successfully', shop: updated });
+  } catch (error) {
+    console.error('Update my-shop error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update shop' });
+  }
+});
+
+// Merchant Photos Management
+router.get('/photos', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const photos = db.prepare('SELECT * FROM shop_photos WHERE shop_id = ? ORDER BY is_cover DESC, id ASC').all(shopId);
+    return res.json({ success: true, photos });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch photos' });
+  }
+});
+
+router.post('/photos', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const { photo_url, caption, is_cover } = req.body;
+    if (!photo_url) return res.status(400).json({ success: false, error: 'Photo URL is required' });
+
+    if (is_cover) {
+      db.prepare('UPDATE shop_photos SET is_cover = 0 WHERE shop_id = ?').run(shopId);
+      db.prepare('UPDATE shops SET cover_photo_url = ? WHERE id = ?').run(photo_url, shopId);
+    }
+
+    const result = db.prepare(`
+      INSERT INTO shop_photos (shop_id, photo_url, caption, is_cover)
+      VALUES (?, ?, ?, ?)
+    `).run(shopId, photo_url, caption || null, is_cover ? 1 : 0);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Photo uploaded to shop gallery',
+      photo: {
+        id: result.lastInsertRowid,
+        shop_id: shopId,
+        photo_url,
+        caption,
+        is_cover: is_cover ? 1 : 0
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to upload photo' });
+  }
+});
+
+router.delete('/photos/:id', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    db.prepare('DELETE FROM shop_photos WHERE id = ? AND shop_id = ?').run(req.params.id, shopId);
+    return res.json({ success: true, message: 'Photo deleted' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to delete photo' });
+  }
+});
 
 // 1. Get Merchant Products & Services
 router.get('/products', (req, res) => {
   try {
     const shopId = req.user.shop_id || req.user.id;
-    const products = db.prepare('SELECT * FROM products WHERE shop_id = ? ORDER BY id DESC').all(shopId);
+    const products = db.prepare('SELECT * FROM products WHERE shop_id = ? ORDER BY display_order ASC, id DESC').all(shopId);
     return res.json({ success: true, products });
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to fetch products' });
@@ -24,15 +245,25 @@ router.get('/products', (req, res) => {
 router.post('/products', (req, res) => {
   try {
     const shopId = req.user.shop_id || req.user.id;
-    const { name, photo_url, price, category, reward_eligible, reward_percent, description } = req.body;
+    const {
+      name, photo_url, price, category, reward_eligible, reward_percent, description,
+      product_type, veg_non_veg, food_category, special_offer, fabric, colour, size,
+      brand, specifications, warranty, price_max, duration, timings, facility_name,
+      is_available, display_order, photos
+    } = req.body;
 
     if (!name || price === undefined) {
       return res.status(400).json({ success: false, error: 'Product name and price are required' });
     }
 
     const result = db.prepare(`
-      INSERT INTO products (shop_id, name, photo_url, price, category, reward_eligible, reward_percent, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO products (
+        shop_id, name, photo_url, price, category, reward_eligible, reward_percent, description,
+        product_type, veg_non_veg, food_category, special_offer, fabric, colour, size,
+        brand, specifications, warranty, price_max, duration, timings, facility_name,
+        is_available, display_order, photos
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       shopId,
       name.trim(),
@@ -41,13 +272,30 @@ router.post('/products', (req, res) => {
       category ? category.trim() : 'General',
       reward_eligible ? 1 : 0,
       reward_percent !== undefined ? parseInt(reward_percent) : 10,
-      description ? description.trim() : ''
+      description ? description.trim() : '',
+      product_type || 'product',
+      veg_non_veg || null,
+      food_category || null,
+      special_offer || null,
+      fabric || null,
+      colour || null,
+      size || null,
+      brand || null,
+      specifications || null,
+      warranty || null,
+      price_max ? parseFloat(price_max) : null,
+      duration || null,
+      timings || null,
+      facility_name || null,
+      is_available !== undefined ? (is_available ? 1 : 0) : 1,
+      display_order ? parseInt(display_order) : 0,
+      photos ? (typeof photos === 'string' ? photos : JSON.stringify(photos)) : null
     );
 
-    return res.status(201).json({ success: true, message: 'Product added successfully', productId: result.lastInsertRowid });
+    return res.status(201).json({ success: true, message: 'Item added successfully', productId: result.lastInsertRowid });
   } catch (error) {
     console.error('Add product error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to add product' });
+    return res.status(500).json({ success: false, error: 'Failed to add item' });
   }
 });
 
@@ -55,17 +303,58 @@ router.post('/products', (req, res) => {
 router.put('/products/:id', (req, res) => {
   try {
     const shopId = req.user.shop_id || req.user.id;
-    const { name, photo_url, price, category, reward_eligible, reward_percent, description, availability } = req.body;
+    const {
+      name, photo_url, price, category, reward_eligible, reward_percent, description, availability,
+      product_type, veg_non_veg, food_category, special_offer, fabric, colour, size,
+      brand, specifications, warranty, price_max, duration, timings, facility_name,
+      is_available, display_order, photos
+    } = req.body;
 
     db.prepare(`
       UPDATE products
-      SET name = ?, photo_url = ?, price = ?, category = ?, reward_eligible = ?, reward_percent = ?, description = ?, availability = ?
+      SET name = COALESCE(?, name),
+          photo_url = COALESCE(?, photo_url),
+          price = COALESCE(?, price),
+          category = COALESCE(?, category),
+          reward_eligible = COALESCE(?, reward_eligible),
+          reward_percent = COALESCE(?, reward_percent),
+          description = COALESCE(?, description),
+          availability = COALESCE(?, availability),
+          product_type = COALESCE(?, product_type),
+          veg_non_veg = COALESCE(?, veg_non_veg),
+          food_category = COALESCE(?, food_category),
+          special_offer = COALESCE(?, special_offer),
+          fabric = COALESCE(?, fabric),
+          colour = COALESCE(?, colour),
+          size = COALESCE(?, size),
+          brand = COALESCE(?, brand),
+          specifications = COALESCE(?, specifications),
+          warranty = COALESCE(?, warranty),
+          price_max = COALESCE(?, price_max),
+          duration = COALESCE(?, duration),
+          timings = COALESCE(?, timings),
+          facility_name = COALESCE(?, facility_name),
+          is_available = COALESCE(?, is_available),
+          display_order = COALESCE(?, display_order),
+          photos = COALESCE(?, photos)
       WHERE id = ? AND shop_id = ?
-    `).run(name, photo_url, parseFloat(price), category, reward_eligible ? 1 : 0, parseInt(reward_percent), description, availability || 'available', req.params.id, shopId);
+    `).run(
+      name, photo_url, price !== undefined ? parseFloat(price) : null, category,
+      reward_eligible !== undefined ? (reward_eligible ? 1 : 0) : null,
+      reward_percent !== undefined ? parseInt(reward_percent) : null,
+      description, availability,
+      product_type, veg_non_veg, food_category, special_offer, fabric, colour, size,
+      brand, specifications, warranty, price_max ? parseFloat(price_max) : null,
+      duration, timings, facility_name,
+      is_available !== undefined ? (is_available ? 1 : 0) : null,
+      display_order !== undefined ? parseInt(display_order) : null,
+      photos ? (typeof photos === 'string' ? photos : JSON.stringify(photos)) : null,
+      req.params.id, shopId
+    );
 
-    return res.json({ success: true, message: 'Product updated successfully' });
+    return res.json({ success: true, message: 'Item updated successfully' });
   } catch (error) {
-    return res.status(500).json({ success: false, error: 'Failed to update product' });
+    return res.status(500).json({ success: false, error: 'Failed to update item' });
   }
 });
 
@@ -77,6 +366,105 @@ router.delete('/products/:id', (req, res) => {
     return res.json({ success: true, message: 'Product deleted successfully' });
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to delete product' });
+  }
+});
+
+// Customer Reviews for Merchant
+router.get('/reviews', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const reviews = db.prepare(`
+      SELECT r.*, u.full_name AS customer_name
+      FROM reviews r
+      JOIN users u ON r.user_id = u.id
+      WHERE r.shop_id = ? AND r.status != 'hidden'
+      ORDER BY r.created_at DESC
+    `).all(shopId);
+
+    const stats = db.prepare(`
+      SELECT AVG(rating) as avg, COUNT(*) as count
+      FROM reviews
+      WHERE shop_id = ? AND status = 'approved'
+    `).get(shopId);
+
+    return res.json({
+      success: true,
+      reviews,
+      rating_avg: stats && stats.count > 0 ? Number(stats.avg.toFixed(1)) : 4.8,
+      rating_count: stats ? stats.count : 0
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch reviews' });
+  }
+});
+
+router.post('/reviews/:id/reply', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const { reply } = req.body;
+    if (!reply || !reply.trim()) {
+      return res.status(400).json({ success: false, error: 'Reply text is required' });
+    }
+
+    const review = db.prepare('SELECT id FROM reviews WHERE id = ? AND shop_id = ?').get(req.params.id, shopId);
+    if (!review) {
+      return res.status(404).json({ success: false, error: 'Review not found' });
+    }
+
+    db.prepare(`
+      UPDATE reviews
+      SET merchant_reply = ?, merchant_replied_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND shop_id = ?
+    `).run(reply.trim(), req.params.id, shopId);
+
+    return res.json({ success: true, message: 'Reply posted successfully' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to reply to review' });
+  }
+});
+
+// Orders Management for Merchant (Section 11)
+router.get('/orders', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const orders = db.prepare('SELECT * FROM orders WHERE shop_id = ? ORDER BY id DESC').all(shopId);
+
+    const getItems = db.prepare('SELECT * FROM order_items WHERE order_id = ?');
+    const enriched = orders.map(ord => ({
+      ...ord,
+      items: getItems.all(ord.id)
+    }));
+
+    return res.json({ success: true, orders: enriched });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch orders' });
+  }
+});
+
+router.put('/orders/:id/status', (req, res) => {
+  try {
+    const shopId = req.user.shop_id || req.user.id;
+    const { status, cancellation_reason } = req.body;
+
+    const validStatuses = ['Pending', 'Accepted', 'Preparing', 'Ready', 'Dispatched', 'Delivered', 'Cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, error: 'Invalid order status' });
+    }
+
+    const order = db.prepare('SELECT id FROM orders WHERE id = ? AND shop_id = ?').get(req.params.id, shopId);
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    db.prepare(`
+      UPDATE orders
+      SET status = ?, cancellation_reason = COALESCE(?, cancellation_reason), updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND shop_id = ?
+    `).run(status, cancellation_reason || null, req.params.id, shopId);
+
+    return res.json({ success: true, message: `Order status updated to ${status}` });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to update order status' });
   }
 });
 

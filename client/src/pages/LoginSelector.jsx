@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Store, Shield, ArrowRight, Sparkles } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
 import { APP_NAME } from '../config/brand';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import vp52Logo from '../assets/vp52-logo.png';
 
 export default function LoginSelector() {
@@ -14,8 +15,12 @@ export default function LoginSelector() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px'
+      padding: '24px',
+      position: 'relative'
     }}>
+      <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}>
+        <LanguageSwitcher tone="dark" compact={true} />
+      </div>
       <div style={{
         maxWidth: '960px',
         width: '100%',

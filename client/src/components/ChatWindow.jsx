@@ -1,22 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Send, AlertCircle, WifiOff, RefreshCw } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
-import { apiFetch } from '../utils/api';
+import { apiFetch, parseApiResponse } from '../utils/api';
 
 const POLL_MS = 4000;
 const MAX_LEN = 2000;
 
-function formatTime(iso) {
+function formatTime(iso, locale = 'en-IN') {
   if (!iso) return '';
   try {
-    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   } catch (e) {
     return '';
   }
 }
 
 export default function ChatWindow({ basePath, conversationId, myRole, accent = '#D4AF37', deriveHeader, onBack }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const [messages, setMessages] = useState([]);
   const [conversation, setConversation] = useState(null);
@@ -51,12 +51,9 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
         setStatus('notfound');
         return;
       }
-      if (!res.ok) {
-        if (initial) setStatus('error');
-        return;
-      }
-      const data = await res.json();
-      if (!data || !data.success) {
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (!parsed.ok || !data || !data.success) {
         if (initial) setStatus('error');
         return;
       }
@@ -123,13 +120,9 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
         method: 'POST',
         body: JSON.stringify({ message_text: text }),
       });
-      if (!res.ok) {
-        setSendError(true);
-        setSending(false);
-        return;
-      }
-      const data = await res.json();
-      if (data && data.success && data.message) {
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success && data.message) {
         setMessages((prev) => {
           if (prev.some((m) => m.id === data.message.id)) return prev;
           return [...prev, data.message];
@@ -258,7 +251,7 @@ export default function ChatWindow({ basePath, conversationId, myRole, accent = 
                   {m.message_text}
                 </div>
                 <div style={{ fontSize: '10px', color: '#777777', marginTop: '3px', textAlign: mine ? 'right' : 'left', fontWeight: 600 }}>
-                  {mine ? t('you') : ''} {formatTime(m.created_at)}
+                  {mine ? t('you') : ''} {formatTime(m.created_at, locale)}
                 </div>
               </div>
             </div>

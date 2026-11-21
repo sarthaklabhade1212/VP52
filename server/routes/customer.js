@@ -2,13 +2,34 @@ const express = require('express');
 const crypto = require('crypto');
 const db = require('../db/database');
 const { authenticateToken, requireRole, requireCompletedProfile } = require('../middleware/auth');
+const { createRateLimiter, getClientIp } = require('../middleware/rateLimiter');
+const { CATEGORIES, getCategoryById } = require('../config/categories');
+const {
+  getAdMobConfig,
+  SSV_REWARD_AMOUNT,
+  SSV_REWARD_ITEM,
+  SESSION_DURATION_HOURS,
+  MAX_ADS_PER_SESSION
+} = require('../config/admob');
 
 const router = express.Router();
+
+const customerAccountDeletionLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many account deletion attempts. Please try again later.',
+  keyGenerator: (req) => `cust_delete_acct:${getClientIp(req)}`
+});
 
 // Apply Customer Authentication Middleware to all customer routes
 router.use(authenticateToken);
 router.use(requireRole('customer'));
 router.use(requireCompletedProfile);
+
+// Categories reference for Customer
+router.get('/categories', (req, res) => {
+  return res.json({ success: true, categories: CATEGORIES });
+});
 
 // Helper: is a stored coordinate pair usable? Treats NULL/undefined (missing),
 // non-numeric, and out-of-range values as invalid. Note Number(null) === 0, so the
@@ -287,9 +308,20 @@ router.get('/wallet', (req, res) => {
   }
 });
 
-// 2. Watch Simulated Ad & Earn Points (Calculated from watch duration seconds)
+// 2. Watch Ad & Earn Points — Fail-closed against unverified client-only callbacks.
+// Rewarded ad coin crediting MUST NOT occur solely from a client callback without
+// server-side AdMob SSV / verified server-issued ad completion proof.
 router.post('/watch-ad', (req, res) => {
   try {
+    const ssvVerified = req.admobSsvVerified === true;
+    if (!ssvVerified) {
+      return res.status(403).json({
+        success: false,
+        code: 'REWARDED_AD_VERIFICATION_REQUIRED',
+        error: 'Rewarded ad coins cannot be credited from a client callback without server-side verification.'
+      });
+    }
+
     const userId = req.user.id;
     const adDurationSec = parseInt(getRewardSetting('ad_duration_seconds', '10'), 10);
     const pointsPerAdConfig = parseInt(getRewardSetting('points_per_ad', '100'), 10);
@@ -406,17 +438,62 @@ router.post('/qr-token', (req, res) => {
   }
 });
 
+// Update Customer Profile Photo
+router.post('/photo', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { photo_url } = req.body || {};
+
+    if (!photo_url || typeof photo_url !== 'string') {
+      return res.status(400).json({ success: false, error: 'Valid photo URL is required' });
+    }
+
+    const cleanUrl = photo_url.trim();
+    if (!cleanUrl.startsWith('/uploads/') && !cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      return res.status(400).json({ success: false, error: 'Invalid photo URL format' });
+    }
+
+    db.prepare('UPDATE users SET profile_photo = ? WHERE id = ?').run(cleanUrl, userId);
+
+    const user = db.prepare('SELECT id, full_name, email, phone, status, profile_photo, profile_completed, created_at FROM users WHERE id = ?').get(userId);
+
+    return res.json({
+      success: true,
+      message: 'Profile photo updated successfully',
+      profile_photo: cleanUrl,
+      user
+    });
+  } catch (error) {
+    console.error('Update profile photo error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update profile photo' });
+  }
+});
+
+// Remove Customer Profile Photo
+router.delete('/photo', (req, res) => {
+  try {
+    const userId = req.user.id;
+    db.prepare('UPDATE users SET profile_photo = NULL WHERE id = ?').run(userId);
+    return res.json({ success: true, message: 'Profile photo removed' });
+  } catch (error) {
+    console.error('Remove profile photo error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to remove profile photo' });
+  }
+});
+
 // 3. Get Active Approved Shops & Offers (Strict Public Discoverability Filter)
 router.get('/shops', (req, res) => {
   try {
-    const { search, category, maxDistance, lat, lng } = req.query;
+    const { search, category, subcategory, minRating, openNow, sortBy, maxDistance, lat, lng } = req.query;
 
     const hasUserLocation = isValidCoord(lat, lng);
     const userLat = hasUserLocation ? Number(lat) : null;
     const userLng = hasUserLocation ? Number(lng) : null;
 
     let query = `
-      SELECT id, shop_code, name, category, description, address, phone, image_url, status, verification_status, latitude, longitude, rating
+      SELECT id, shop_code, name, category, subcategory, description, address, area_locality, city, district, state, pincode,
+             phone, whatsapp_number, image_url, logo_url, cover_photo_url, status, verification_status,
+             latitude, longitude, rating, rating_avg, rating_count, opening_time, closing_time, is_temporarily_closed
       FROM shops
       WHERE LOWER(status) = 'active' AND LOWER(verification_status) = 'approved'
     `;
@@ -424,14 +501,47 @@ router.get('/shops', (req, res) => {
     const params = [];
 
     if (search) {
-      query += ` AND (name LIKE ? OR category LIKE ? OR description LIKE ?)`;
+      query += ` AND (
+        name LIKE ? OR category LIKE ? OR subcategory LIKE ? OR description LIKE ? OR address LIKE ?
+        OR EXISTS (SELECT 1 FROM products p WHERE p.shop_id = shops.id AND p.name LIKE ?)
+      )`;
       const term = `%${search.trim()}%`;
-      params.push(term, term, term);
+      params.push(term, term, term, term, term, term);
     }
 
     if (category && category !== 'All') {
-      query += ` AND category = ?`;
-      params.push(category.trim());
+      const catObj = getCategoryById(category);
+      const catName = catObj ? catObj.name : category.trim();
+      const aliases = [category.trim(), catName];
+      const lower = catName.toLowerCase();
+      if (lower.includes('grocery')) {
+        aliases.push('Grocery & Supermarket', 'Groceries', 'Grocery');
+      } else if (lower.includes('hotel') || lower.includes('food services')) {
+        aliases.push('Café & Bakery', 'Fine Dining', 'Restaurant', 'Hotel', 'Food');
+      } else if (lower.includes('clothing') || lower.includes('fashion')) {
+        aliases.push('Clothing & Apparel', 'Clothing', 'Paithani');
+      } else if (lower.includes('electrical') || lower.includes('electronics')) {
+        aliases.push('Electronics & Accessories', 'Electronics');
+      } else if (lower.includes('general')) {
+        aliases.push('Books & Supplies', 'Retail');
+      }
+
+      const placeholders = aliases.map(() => '?').join(' OR category = ');
+      query += ` AND (category = ${placeholders})`;
+      params.push(...aliases);
+    }
+
+    if (subcategory && subcategory !== 'All') {
+      query += ` AND subcategory = ?`;
+      params.push(subcategory.trim());
+    }
+
+    if (minRating) {
+      const minR = parseFloat(minRating);
+      if (Number.isFinite(minR)) {
+        query += ` AND COALESCE(rating_avg, rating, 4.8) >= ?`;
+        params.push(minR);
+      }
     }
 
     query += ` ORDER BY name ASC`;
@@ -439,11 +549,30 @@ router.get('/shops', (req, res) => {
     let shops = db.prepare(query).all(...params);
     shops = shops.filter(s => isValidCoord(s.latitude, s.longitude));
 
-    shops = shops.map(s => ({
-      ...s,
-      distance_km: hasUserLocation ? calculateDistance(userLat, userLng, s.latitude, s.longitude) : null,
-      is_open: true
-    }));
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMin = now.getMinutes();
+    const currentTimeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}`;
+
+    shops = shops.map(s => {
+      let isOpen = true;
+      if (s.is_temporarily_closed) {
+        isOpen = false;
+      } else if (s.opening_time && s.closing_time) {
+        isOpen = currentTimeStr >= s.opening_time && currentTimeStr <= s.closing_time;
+      }
+      return {
+        ...s,
+        distance_km: hasUserLocation ? calculateDistance(userLat, userLng, s.latitude, s.longitude) : null,
+        is_open: isOpen,
+        rating: s.rating_avg || s.rating || 4.8,
+        rating_count: s.rating_count || 0
+      };
+    });
+
+    if (openNow === 'true' || openNow === true) {
+      shops = shops.filter(s => s.is_open);
+    }
 
     if (hasUserLocation) {
       if (maxDistance && maxDistance !== 'all') {
@@ -452,6 +581,14 @@ router.get('/shops', (req, res) => {
           shops = shops.filter(s => s.distance_km !== null && s.distance_km <= maxDistKm);
         }
       }
+    }
+
+    // Sorting
+    if (sortBy === 'rating') {
+      shops.sort((a, b) => (b.rating_avg || b.rating || 0) - (a.rating_avg || a.rating || 0));
+    } else if (sortBy === 'name') {
+      shops.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (hasUserLocation) {
       shops.sort((a, b) => {
         if (a.distance_km === null) return 1;
         if (b.distance_km === null) return -1;
@@ -476,6 +613,244 @@ router.get('/shops', (req, res) => {
   } catch (error) {
     console.error('Fetch customer shops error:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch available offers' });
+  }
+});
+
+// Single Shop Details (Cover, Logo, Gallery, Products/Menu, Offers, Reviews)
+router.get('/shops/:id', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shopId = req.params.id;
+
+    const shop = db.prepare(`
+      SELECT id, shop_code, name, category, subcategory, description, address, area_locality, city, district, state, pincode,
+             phone, whatsapp_number, image_url, logo_url, cover_photo_url, status, verification_status,
+             latitude, longitude, rating, rating_avg, rating_count, opening_time, closing_time, business_hours, is_temporarily_closed
+      FROM shops
+      WHERE id = ? AND LOWER(status) = 'active' AND LOWER(verification_status) = 'approved'
+    `).get(shopId);
+
+    if (!shop) {
+      return res.status(404).json({ success: false, error: 'Shop not found or not currently active.' });
+    }
+
+    const photos = db.prepare('SELECT id, photo_url, caption, is_cover FROM shop_photos WHERE shop_id = ? ORDER BY is_cover DESC, id ASC').all(shopId);
+    const products = db.prepare('SELECT * FROM products WHERE shop_id = ? AND is_available = 1 ORDER BY display_order ASC, id DESC').all(shopId);
+    const offers = db.prepare("SELECT * FROM offers WHERE shop_id = ? AND LOWER(status) = 'active' ORDER BY required_points ASC").all(shopId);
+
+    const reviews = db.prepare(`
+      SELECT r.id, r.user_id, r.rating, r.comment, r.photo_url, r.merchant_reply, r.merchant_replied_at, r.is_verified_visit, r.created_at,
+             u.full_name AS customer_name
+      FROM reviews r
+      JOIN users u ON r.user_id = u.id
+      WHERE r.shop_id = ? AND r.status = 'approved'
+      ORDER BY r.created_at DESC
+    `).all(shopId);
+
+    // Distribution
+    const ratingDist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    reviews.forEach(r => {
+      const star = Math.min(5, Math.max(1, Math.round(r.rating)));
+      ratingDist[star] = (ratingDist[star] || 0) + 1;
+    });
+
+    const userReview = reviews.find(r => r.user_id === userId) || null;
+
+    return res.json({
+      success: true,
+      shop: {
+        ...shop,
+        photos,
+        products,
+        offers,
+        reviews,
+        rating_distribution: ratingDist,
+        user_review: userReview
+      }
+    });
+  } catch (error) {
+    console.error('Fetch customer shop detail error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch shop details' });
+  }
+});
+
+// Customer Submit Rating & Review
+router.post('/shops/:id/reviews', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shopId = req.params.id;
+    const { rating, comment, photo_url } = req.body;
+
+    const numRating = Number(rating);
+    if (!Number.isInteger(numRating) || numRating < 1 || numRating > 5) {
+      return res.status(400).json({ success: false, error: 'Star rating must be an integer between 1 and 5' });
+    }
+
+    if (!comment || typeof comment !== 'string' || comment.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'Review text feedback is required' });
+    }
+
+    const shop = db.prepare("SELECT id FROM shops WHERE id = ? AND LOWER(status) = 'active' AND LOWER(verification_status) = 'approved'").get(shopId);
+    if (!shop) {
+      return res.status(404).json({ success: false, error: 'Shop not found' });
+    }
+
+    // Check if customer already submitted review
+    const existing = db.prepare('SELECT id FROM reviews WHERE user_id = ? AND shop_id = ?').get(userId, shopId);
+
+    if (existing) {
+      db.prepare(`
+        UPDATE reviews
+        SET rating = ?, comment = ?, photo_url = COALESCE(?, photo_url), created_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(numRating, comment.trim(), photo_url || null, existing.id);
+    } else {
+      db.prepare(`
+        INSERT INTO reviews (user_id, shop_id, rating, comment, photo_url, status)
+        VALUES (?, ?, ?, ?, ?, 'approved')
+      `).run(userId, shopId, numRating, comment.trim(), photo_url || null);
+    }
+
+    // Recalculate average rating & count
+    const stats = db.prepare(`
+      SELECT AVG(rating) as avg, COUNT(*) as count
+      FROM reviews
+      WHERE shop_id = ? AND status = 'approved'
+    `).get(shopId);
+
+    const newAvg = stats && stats.count > 0 ? Number(stats.avg.toFixed(1)) : numRating;
+    const newCount = stats ? stats.count : 1;
+
+    db.prepare('UPDATE shops SET rating_avg = ?, rating_count = ? WHERE id = ?').run(newAvg, newCount, shopId);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Review submitted successfully. Thank you for supporting local businesses!',
+      rating_avg: newAvg,
+      rating_count: newCount
+    });
+  } catch (error) {
+    console.error('Submit review error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to submit review' });
+  }
+});
+
+// Customer Report Abusive Review
+router.post('/reviews/:id/report', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const reviewId = req.params.id;
+    const { reason } = req.body;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, error: 'Please provide a reason for reporting this review' });
+    }
+
+    const review = db.prepare('SELECT id FROM reviews WHERE id = ?').get(reviewId);
+    if (!review) return res.status(404).json({ success: false, error: 'Review not found' });
+
+    db.prepare(`
+      INSERT INTO review_reports (review_id, reporter_user_id, reason)
+      VALUES (?, ?, ?)
+    `).run(reviewId, userId, reason.trim());
+
+    return res.json({ success: true, message: 'Report submitted for administrator moderation review.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to report review' });
+  }
+});
+
+// Orders & Inquiries (Section 11)
+router.post('/orders', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { shop_id, items, customer_name, customer_phone, delivery_address, order_notes } = req.body;
+
+    if (!shop_id || !items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, error: 'Shop and order items are required' });
+    }
+
+    const shop = db.prepare("SELECT id, name FROM shops WHERE id = ? AND LOWER(status) = 'active' AND LOWER(verification_status) = 'approved'").get(shop_id);
+    if (!shop) return res.status(404).json({ success: false, error: 'Shop not found or not active' });
+
+    const orderNumber = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    let totalAmount = 0;
+    items.forEach(item => {
+      totalAmount += (Number(item.price) || 0) * (Number(item.quantity) || 1);
+    });
+
+    const createOrder = db.transaction(() => {
+      const orderRes = db.prepare(`
+        INSERT INTO orders (
+          order_number, user_id, shop_id, status, customer_name, customer_phone,
+          delivery_address, order_notes, total_amount
+        )
+        VALUES (?, ?, ?, 'Pending', ?, ?, ?, ?, ?)
+      `).run(
+        orderNumber, userId, shop_id,
+        customer_name || req.user.full_name || 'Customer',
+        customer_phone || req.user.phone || '',
+        delivery_address || null,
+        order_notes || null,
+        totalAmount
+      );
+
+      const orderId = orderRes.lastInsertRowid;
+      const insertItem = db.prepare(`
+        INSERT INTO order_items (order_id, product_id, item_name, price, quantity, item_total)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      items.forEach(item => {
+        const qty = Number(item.quantity) || 1;
+        const pr = Number(item.price) || 0;
+        insertItem.run(orderId, item.product_id || null, item.name || item.item_name || 'Item', pr, qty, pr * qty);
+      });
+
+      return orderId;
+    });
+
+    const newOrderId = createOrder();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Order / inquiry placed successfully with merchant!',
+      order: {
+        id: newOrderId,
+        order_number: orderNumber,
+        shop_id,
+        shop_name: shop.name,
+        total_amount: totalAmount,
+        status: 'Pending'
+      }
+    });
+  } catch (error) {
+    console.error('Create order error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to place order' });
+  }
+});
+
+router.get('/orders', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const orders = db.prepare(`
+      SELECT o.*, s.name AS shop_name, s.phone AS shop_phone, s.image_url AS shop_image
+      FROM orders o
+      JOIN shops s ON o.shop_id = s.id
+      WHERE o.user_id = ?
+      ORDER BY o.id DESC
+    `).all(userId);
+
+    const getItems = db.prepare('SELECT * FROM order_items WHERE order_id = ?');
+    const enriched = orders.map(ord => ({
+      ...ord,
+      items: getItems.all(ord.id)
+    }));
+
+    return res.json({ success: true, orders: enriched });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch customer orders' });
   }
 });
 
@@ -727,28 +1102,40 @@ router.get('/coin-session', (req, res) => {
       ORDER BY id DESC LIMIT 1
     `).get(userId);
 
+    // Fetch recent session history for customer
+    const sessionHistory = db.prepare(`
+      SELECT id, started_at, expires_at, duration_seconds, coins_earned, status, completed_at, reward_claimed
+      FROM vp52_coin_sessions
+      WHERE user_id = ?
+      ORDER BY id DESC LIMIT 10
+    `).all(userId);
+
     if (pendingSession) {
       return res.json({
         success: true,
-        session_state: pendingSession.ads_completed >= 3 ? 'READY_TO_START' : 'ADS_IN_PROGRESS',
+        session_state: pendingSession.ads_completed >= 3 ? 'READY_TO_START' : 'READY_TO_START',
+        can_start: true,
         session: {
           id: pendingSession.id,
           status: pendingSession.status,
           ads_completed: pendingSession.ads_completed,
-          can_start: pendingSession.ads_completed >= 3
-        }
+          can_start: true
+        },
+        session_history: sessionHistory
       });
     }
 
-    // 4. Default: No session
+    // 4. Default: No active session -> customer is eligible to start 6-hour session immediately!
     return res.json({
       success: true,
       session_state: 'NO_SESSION',
+      can_start: true,
       session: {
         ads_completed: 0,
-        can_start: false,
+        can_start: true,
         status: 'no_session'
-      }
+      },
+      session_history: sessionHistory
     });
   } catch (error) {
     console.error('Fetch VP52 coin session error:', error);
@@ -809,67 +1196,155 @@ router.post('/coin-session/ad-complete', (req, res) => {
   }
 });
 
-// POST /api/customer/coin-session/start — Start 6-Hour Session after 3 ads completed
+// POST /api/customer/coin-session/start — Start 6-Hour Session immediately
 router.post('/coin-session/start', (req, res) => {
   try {
     const userId = req.user.id;
     const now = Date.now();
     const DURATION_SECONDS = GET_TEST_SESSION_DURATION();
 
-    // Duplicate session protection: check if active session exists
-    const existingActive = db.prepare(`
-      SELECT * FROM vp52_coin_sessions
-      WHERE user_id = ? AND status = 'active'
-    `).get(userId);
+    const startResult = db.transaction(() => {
+      // 1. Duplicate session protection: check if an active unexpired session exists
+      const activeSessions = db.prepare(`
+        SELECT * FROM vp52_coin_sessions
+        WHERE user_id = ? AND status = 'active'
+        ORDER BY id DESC
+      `).all(userId);
 
-    if (existingActive) {
-      const expiresMs = new Date(existingActive.expires_at).getTime();
-      if (now < expiresMs) {
-        return res.json({
-          success: true,
-          message: 'Existing active session returned',
-          session: existingActive
-        });
+      for (const s of activeSessions) {
+        const expiresMs = new Date(s.expires_at).getTime();
+        if (Number.isFinite(expiresMs) && now < expiresMs) {
+          return { existing: true, session: s };
+        }
       }
-    }
 
-    // Fetch pending session with at least 3 ads completed
-    let pending = db.prepare(`
-      SELECT * FROM vp52_coin_sessions
-      WHERE user_id = ? AND status IN ('ready_to_start', 'pending_ads') AND ads_completed >= 3
-      ORDER BY id DESC LIMIT 1
-    `).get(userId);
+      // 2. Auto-finalize any expired active unclaimed sessions atomically so wallet,
+      // coin_lots, reward_transactions, and point_ledger stay strictly consistent
+      for (const s of activeSessions) {
+        const expiresMs = new Date(s.expires_at).getTime();
+        if (s.reward_claimed === 0 && (!Number.isFinite(expiresMs) || now >= expiresMs)) {
+          const finalizeInfo = db.prepare(`
+            UPDATE vp52_coin_sessions
+            SET status = 'completed', completed_at = CURRENT_TIMESTAMP, reward_claimed = 1, coins_earned = 100
+            WHERE id = ? AND status = 'active' AND reward_claimed = 0
+          `).run(s.id);
 
-    if (!pending) {
-      return res.status(400).json({
-        success: false,
-        error: 'You must complete 3 advertisements before starting a 6-Hour Earning Session.'
+          if (finalizeInfo.changes === 1) {
+            const txId = `VP52-SESSION-${s.id}`;
+            const existingLot = db.prepare('SELECT id FROM coin_lots WHERE transaction_id = ?').get(txId);
+            if (!existingLot) {
+              const lotExpiresAt = new Date(now + 30 * 86400 * 1000).toISOString();
+              db.prepare(`
+                INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, next_transition_at, expires_at, status)
+                VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, 'Bronze', 100, ?, ?, 'ACTIVE')
+              `).run(userId, txId, lotExpiresAt, lotExpiresAt);
+
+              db.prepare('INSERT OR IGNORE INTO wallets (user_id, balance, total_earned, total_redeemed) VALUES (?, 0, 0, 0)').run(userId);
+              const walletBefore = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0 };
+              const prevBal = walletBefore.balance;
+              const newBal = prevBal + 100;
+              const newLifetime = walletBefore.total_earned + 100;
+
+              db.prepare(`
+                UPDATE wallets
+                SET balance = ?, total_earned = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+              `).run(newBal, newLifetime, userId);
+
+              db.prepare(`
+                INSERT INTO reward_transactions (user_id, activity_type, points)
+                VALUES (?, 'VP52 6-Hour Session Completion', 100)
+              `).run(userId);
+
+              db.prepare(`
+                INSERT INTO point_ledger (user_id, transaction_id, type, points, previous_balance, new_balance, reason)
+                VALUES (?, ?, 'AD_REWARD', 100, ?, ?, 'Auto-finalized Expired VP52 6-Hour Earning Session (100 Coins)')
+              `).run(userId, txId, prevBal, newBal);
+            }
+          }
+        }
+      }
+
+      // 3. Activate new 6-hour session immediately
+      const durationSec = DURATION_SECONDS;
+      const startTime = new Date(now).toISOString();
+      const endTime = new Date(now + durationSec * 1000).toISOString();
+
+      let session = db.prepare(`
+        SELECT * FROM vp52_coin_sessions
+        WHERE user_id = ? AND status IN ('ready_to_start', 'pending_ads')
+        ORDER BY id DESC LIMIT 1
+      `).get(userId);
+
+      if (session) {
+        db.prepare(`
+          UPDATE vp52_coin_sessions
+          SET started_at = ?, expires_at = ?, duration_seconds = ?, status = 'active', coins_earned = 0, reward_claimed = 0, ads_completed = 3
+          WHERE id = ?
+        `).run(startTime, endTime, durationSec, session.id);
+      } else {
+        const resIns = db.prepare(`
+          INSERT INTO vp52_coin_sessions (user_id, started_at, expires_at, duration_seconds, status, ads_completed, coins_earned, reward_claimed)
+          VALUES (?, ?, ?, ?, 'active', 3, 0, 0)
+        `).run(userId, startTime, endTime, durationSec);
+        session = { id: resIns.lastInsertRowid };
+      }
+
+      const startedSession = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(session.id);
+      return {
+        existing: false,
+        session: startedSession,
+        startTime,
+        endTime,
+        durationSec
+      };
+    })();
+
+    if (startResult.existing) {
+      const admobCfg = getAdMobConfig();
+      return res.json({
+        success: true,
+        message: 'Existing active session returned',
+        session: startResult.session,
+        ad_experience: {
+          enabled: true,
+          max_native_ads: admobCfg.maxAdsPerSession,
+          native_ad_unit_id: admobCfg.nativeAdUnitId,
+          rewarded_ad_unit_id: admobCfg.rewardedAdUnitId,
+          app_id: admobCfg.appId,
+          test_mode: process.env.NODE_ENV !== 'production'
+        }
       });
     }
 
-    const durationSec = DURATION_SECONDS;
-    const startTime = new Date(now).toISOString();
-    const endTime = new Date(now + durationSec * 1000).toISOString();
+    // Record AdMob request diagnostic event (Part 1 & 10)
+    try {
+      db.prepare(`
+        INSERT INTO ad_event_logs (user_id, ad_format, event_type, metadata)
+        VALUES (?, 'native', 'request', ?)
+      `).run(userId, JSON.stringify({ placement: 'session_start', requested_count: 3 }));
+    } catch (_) {}
 
-    db.prepare(`
-      UPDATE vp52_coin_sessions
-      SET started_at = ?, expires_at = ?, duration_seconds = ?, status = 'active', coins_earned = 0, reward_claimed = 0
-      WHERE id = ?
-    `).run(startTime, endTime, durationSec, pending.id);
-
-    const startedSession = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(pending.id);
-
+    const admobCfg = getAdMobConfig();
     return res.json({
       success: true,
-      message: '6-Hour Earning Session started! Earning 100 VP52 Coins.',
+      message: '6-Hour Earning Session started immediately! Earning 100 VP52 Coins.',
       session: {
-        id: startedSession.id,
-        started_at: startTime,
-        expires_at: endTime,
-        duration_seconds: durationSec,
-        remaining_seconds: durationSec,
+        id: startResult.session.id,
+        started_at: startResult.startTime,
+        expires_at: startResult.endTime,
+        duration_seconds: startResult.durationSec,
+        remaining_seconds: startResult.durationSec,
         coins_earned: 0,
         status: 'active'
+      },
+      ad_experience: {
+        enabled: true,
+        max_native_ads: admobCfg.maxAdsPerSession,
+        native_ad_unit_id: admobCfg.nativeAdUnitId,
+        rewarded_ad_unit_id: admobCfg.rewardedAdUnitId,
+        app_id: admobCfg.appId,
+        test_mode: process.env.NODE_ENV !== 'production'
       }
     });
   } catch (error) {
@@ -884,132 +1359,376 @@ router.post('/coin-session/complete', (req, res) => {
     const userId = req.user.id;
     const now = Date.now();
 
-    const session = db.prepare(`
-      SELECT * FROM vp52_coin_sessions
-      WHERE user_id = ?
-      ORDER BY id DESC LIMIT 1
-    `).get(userId);
-
-    if (!session) {
-      return res.status(404).json({ success: false, error: 'No coin session found' });
-    }
-
-    // Idempotent protection: check if 100 coins already claimed
-    if (session.reward_claimed === 1) {
-      const wallet = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId);
-      return res.json({
-        success: true,
-        already_claimed: true,
-        message: '100 VP52 Coins were already credited to your wallet!',
-        coins_awarded: 100,
-        newBalance: wallet ? wallet.balance : 0
-      });
-    }
-
-    // Verify session time has elapsed
-    const expiresMs = new Date(session.expires_at || Date.now()).getTime();
-    if (now < expiresMs && session.status === 'active') {
-      return res.status(400).json({
-        success: false,
-        error: 'Session is still in progress. Please wait until the session duration completes.'
-      });
-    }
-
-    // Atomic Completion Transaction: Credit 100 coins to coin_lots, wallets, transactions, ledger
+    // Atomic Completion Transaction: check, claim guard, and credit 100 coins atomically
     const completeTx = db.transaction(() => {
-      db.prepare(`
+      const session = db.prepare(`
+        SELECT * FROM vp52_coin_sessions
+        WHERE user_id = ?
+        ORDER BY id DESC LIMIT 1
+      `).get(userId);
+
+      if (!session) {
+        return { status: 404, body: { success: false, error: 'No coin session found' } };
+      }
+
+      if (session.reward_claimed === 1) {
+        const wallet = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId);
+        return {
+          status: 200,
+          body: {
+            success: true,
+            already_claimed: true,
+            message: '100 VP52 Coins were already credited to your wallet!',
+            coins_awarded: 100,
+            newBalance: wallet ? wallet.balance : 0
+          }
+        };
+      }
+
+      if (!session.started_at || !session.expires_at) {
+        return {
+          status: 400,
+          body: { success: false, error: 'Session has not started yet.' }
+        };
+      }
+
+      const expiresMs = new Date(session.expires_at).getTime();
+      if (Number.isFinite(expiresMs) && now < expiresMs && session.status === 'active') {
+        return {
+          status: 400,
+          body: {
+            success: false,
+            error: 'Session is still in progress. Please wait until the session duration completes.'
+          }
+        };
+      }
+
+      const upd = db.prepare(`
         UPDATE vp52_coin_sessions
         SET status = 'completed', completed_at = CURRENT_TIMESTAMP, reward_claimed = 1, coins_earned = 100
         WHERE id = ? AND reward_claimed = 0
       `).run(session.id);
 
+      if (upd.changes !== 1) {
+        const wallet = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId);
+        return {
+          status: 200,
+          body: {
+            success: true,
+            already_claimed: true,
+            message: '100 VP52 Coins were already credited to your wallet!',
+            coins_awarded: 100,
+            newBalance: wallet ? wallet.balance : 0
+          }
+        };
+      }
+
       const txId = `VP52-SESSION-${session.id}`;
-      const expiresAt = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
-
-      db.prepare(`
-        INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, next_transition_at, expires_at, status)
-        VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, 'Bronze', 100, ?, ?, 'ACTIVE')
-      `).run(userId, txId, expiresAt, expiresAt);
-
+      const existingLot = db.prepare('SELECT id FROM coin_lots WHERE transaction_id = ?').get(txId);
+      db.prepare('INSERT OR IGNORE INTO wallets (user_id, balance, total_earned, total_redeemed) VALUES (?, 0, 0, 0)').run(userId);
       const walletBefore = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0 };
       const prevBal = walletBefore.balance;
-      const newBal = prevBal + 100;
-      const newLifetime = walletBefore.total_earned + 100;
+      let newBal = prevBal;
+      let newLifetime = walletBefore.total_earned;
 
-      db.prepare(`
-        UPDATE wallets
-        SET balance = ?, total_earned = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-      `).run(newBal, newLifetime, userId);
+      if (!existingLot) {
+        const expiresAt = new Date(now + 30 * 86400 * 1000).toISOString();
+        db.prepare(`
+          INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, next_transition_at, expires_at, status)
+          VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, 'Bronze', 100, ?, ?, 'ACTIVE')
+        `).run(userId, txId, expiresAt, expiresAt);
 
-      db.prepare(`
-        INSERT INTO reward_transactions (user_id, activity_type, points)
-        VALUES (?, 'VP52 6-Hour Session Completion', 100)
-      `).run(userId);
+        newBal = prevBal + 100;
+        newLifetime = walletBefore.total_earned + 100;
 
-      db.prepare(`
-        INSERT INTO point_ledger (user_id, transaction_id, type, points, previous_balance, new_balance, reason)
-        VALUES (?, ?, 'AD_REWARD', 100, ?, ?, 'Completed VP52 6-Hour Earning Session (100 Coins)')
-      `).run(userId, txId, prevBal, newBal);
+        db.prepare(`
+          UPDATE wallets
+          SET balance = ?, total_earned = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ?
+        `).run(newBal, newLifetime, userId);
+
+        db.prepare(`
+          INSERT INTO reward_transactions (user_id, activity_type, points)
+          VALUES (?, 'VP52 6-Hour Session Completion', 100)
+        `).run(userId);
+
+        db.prepare(`
+          INSERT INTO point_ledger (user_id, transaction_id, type, points, previous_balance, new_balance, reason)
+          VALUES (?, ?, 'AD_REWARD', 100, ?, ?, 'Completed VP52 6-Hour Earning Session (100 Coins)')
+        `).run(userId, txId, prevBal, newBal);
+      }
 
       return {
-        newBalance: newBal,
-        totalEarned: newLifetime
+        status: 200,
+        body: {
+          success: true,
+          message: '🎉 Congratulations! 100 VP52 Coins Credited to your Wallet!',
+          coins_awarded: 100,
+          newBalance: newBal,
+          totalEarned: newLifetime
+        }
       };
     });
 
-    const result = completeTx();
-
-    return res.json({
-      success: true,
-      message: '🎉 Congratulations! 100 VP52 Coins Credited to your Wallet!',
-      coins_awarded: 100,
-      newBalance: result.newBalance,
-      totalEarned: result.totalEarned
-    });
+    const outcome = completeTx();
+    return res.status(outcome.status).json(outcome.body);
   } catch (error) {
     console.error('Complete coin session error:', error);
     return res.status(500).json({ success: false, error: 'Failed to complete session' });
   }
 });
 
-// 6. SERVER-CONTROLLED 6-HOUR REWARD SESSION API (Legacy Fallback)
+// GET /api/customer/coin-session/history — Customer session history
+router.get('/coin-session/history', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const history = db.prepare(`
+      SELECT id, started_at, expires_at, duration_seconds, status, coins_earned, reward_claimed, completed_at, created_at
+      FROM vp52_coin_sessions
+      WHERE user_id = ?
+      ORDER BY id DESC
+      LIMIT 25
+    `).all(userId);
+
+    return res.json({ success: true, history });
+  } catch (err) {
+    console.error('Fetch coin session history error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch session history' });
+  }
+});
+
+// POST /api/customer/ad-event — Log ad placement requests, impressions, clicks, failures
+router.post('/ad-event', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { ad_format, event_type, ad_unit_id, provider, metadata } = req.body;
+
+    if (!event_type) {
+      return res.status(400).json({ success: false, error: 'event_type is required' });
+    }
+
+    db.prepare(`
+      INSERT INTO ad_event_logs (user_id, ad_format, event_type, ad_unit_id, provider, metadata)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      userId,
+      ad_format || 'native',
+      event_type,
+      ad_unit_id || null,
+      provider || 'AdMob',
+      metadata ? (typeof metadata === 'string' ? metadata : JSON.stringify(metadata)) : null
+    );
+
+    return res.json({ success: true, recorded: true });
+  } catch (err) {
+    console.error('Ad event logging error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to log ad event' });
+  }
+});
+
+// ============================================================
+// CUSTOMER-CONTROLLED COIN REDEMPTION (PARTS 3, 4, 5, 8)
+// ============================================================
+
+// POST /api/customer/redemption/create — Customer enters desired coins, generates temporary single-use QR
+router.post('/redemption/create', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { coins_amount, merchant_id } = req.body;
+
+    const coins = parseInt(coins_amount, 10);
+    if (isNaN(coins) || coins <= 0) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid coin amount greater than 0.' });
+    }
+
+    // Check available balance in customer wallet
+    const wallet = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(userId);
+    const currentBalance = wallet ? wallet.balance : 0;
+    if (currentBalance < coins) {
+      return res.status(400).json({
+        success: false,
+        error: `Insufficient balance. You have ${currentBalance} coins available, but requested ${coins} coins.`,
+        available_balance: currentBalance
+      });
+    }
+
+    // Optional merchant restriction
+    let shopName = 'Any Participating VP52 Merchant';
+    if (merchant_id) {
+      const shop = db.prepare('SELECT id, name FROM shops WHERE id = ?').get(merchant_id);
+      if (!shop) {
+        return res.status(404).json({ success: false, error: 'Selected merchant not found.' });
+      }
+      shopName = shop.name;
+    }
+
+    // Cancel any previous pending redemption for this customer to prevent multiple active QR codes
+    db.prepare(`
+      UPDATE coin_redemption_requests
+      SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
+      WHERE user_id = ? AND status = 'pending'
+    `).run(userId);
+
+    // Cryptographically secure token (stored server-side, single-use, temporary)
+    const randomHex = crypto.randomBytes(16).toString('hex').toUpperCase();
+    const secureToken = `VP52-RED-${randomHex}`;
+    const redemptionId = `RED-${Date.now()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutes validity
+
+    db.prepare(`
+      INSERT INTO coin_redemption_requests (
+        redemption_id, secure_token, user_id, merchant_id, coins_amount, discount_inr, status, expires_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).run(
+      redemptionId,
+      secureToken,
+      userId,
+      merchant_id || null,
+      coins,
+      coins, // 1 coin = ₹1 discount
+      expiresAt
+    );
+
+    return res.json({
+      success: true,
+      message: 'Redemption QR code generated. Show this QR to the merchant to collect your discount.',
+      redemption: {
+        redemption_id: redemptionId,
+        secure_token: secureToken,
+        coins_amount: coins,
+        discount_inr: coins,
+        merchant_name: shopName,
+        expires_at: expiresAt,
+        status: 'pending'
+      }
+    });
+  } catch (err) {
+    console.error('Customer create redemption error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to create coin redemption request' });
+  }
+});
+
+// GET /api/customer/redemption/active — Fetch current active pending redemption
+router.get('/redemption/active', (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Auto-expire outdated pending redemptions
+    db.prepare(`
+      UPDATE coin_redemption_requests
+      SET status = 'expired'
+      WHERE user_id = ? AND status = 'pending' AND datetime(expires_at) < datetime('now')
+    `).run(userId);
+
+    const active = db.prepare(`
+      SELECT r.*, s.name AS merchant_name
+      FROM coin_redemption_requests r
+      LEFT JOIN shops s ON r.merchant_id = s.id
+      WHERE r.user_id = ? AND r.status = 'pending' AND datetime(r.expires_at) > datetime('now')
+      ORDER BY r.id DESC LIMIT 1
+    `).get(userId);
+
+    if (!active) {
+      return res.json({ success: true, has_active: false });
+    }
+
+    return res.json({
+      success: true,
+      has_active: true,
+      redemption: {
+        redemption_id: active.redemption_id,
+        secure_token: active.secure_token,
+        coins_amount: active.coins_amount,
+        discount_inr: active.discount_inr,
+        merchant_name: active.merchant_name || 'Any Participating VP52 Merchant',
+        expires_at: active.expires_at,
+        status: active.status
+      }
+    });
+  } catch (err) {
+    console.error('Customer fetch active redemption error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch active redemption' });
+  }
+});
+
+// POST /api/customer/redemption/cancel — Customer cancels pending redemption without penalty
+router.post('/redemption/cancel', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { redemption_id } = req.body;
+
+    let result;
+    if (redemption_id) {
+      result = db.prepare(`
+        UPDATE coin_redemption_requests
+        SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND redemption_id = ? AND status = 'pending'
+      `).run(userId, redemption_id);
+    } else {
+      result = db.prepare(`
+        UPDATE coin_redemption_requests
+        SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND status = 'pending'
+      `).run(userId);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Redemption request cancelled safely. No coins were deducted from your wallet.',
+      cancelled_count: result.changes
+    });
+  } catch (err) {
+    console.error('Customer cancel redemption error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to cancel redemption' });
+  }
+});
+
+// GET /api/customer/redemptions/history — Customer coin redemption history
+router.get('/redemptions/history', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const redemptions = db.prepare(`
+      SELECT r.id, r.redemption_id, r.coins_amount, r.discount_inr, r.status, r.created_at, r.completed_at,
+             s.name AS merchant_name, s.shop_code AS merchant_code
+      FROM coin_redemption_requests r
+      LEFT JOIN shops s ON r.merchant_id = s.id
+      WHERE r.user_id = ?
+      ORDER BY r.id DESC
+      LIMIT 50
+    `).all(userId);
+
+    return res.json({ success: true, redemptions });
+  } catch (err) {
+    console.error('Customer fetch redemption history error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch redemption history' });
+  }
+});
+
+// 6. SERVER-CONTROLLED 6-HOUR REWARD SESSION & ADMOB SSV PREPARATION API
 router.get('/reward-session/status', (req, res) => {
   try {
     const userId = req.user.id;
-    const durationHours = parseInt(getRewardSetting('session_duration_hours', '6'), 10);
-    const adsPerSession = parseInt(getRewardSetting('ads_per_session', '3'), 10);
-    const maxSessionsPerDay = parseInt(getRewardSetting('max_sessions_per_day', '2'), 10);
-    const coinsPerAd = parseInt(getRewardSetting('coins_per_ad', '2'), 10);
+    const admobCfg = getAdMobConfig();
+    const durationHours = SESSION_DURATION_HOURS; // 6 hours
+    const adsPerSession = MAX_ADS_PER_SESSION; // 3 rewarded ads per session
+    const coinsPerAd = SSV_REWARD_AMOUNT; // 1 coin per verified rewarded ad
 
-    // Fetch active non-expired session
+    // Fetch current unexpired 6-hour session (whether ads are in progress or 3/3 completed)
     let session = db.prepare(`
       SELECT * FROM reward_sessions
-      WHERE user_id = ? AND status = 'active' AND datetime(end_time) > datetime('now')
+      WHERE user_id = ? AND datetime(end_time) > datetime('now')
       ORDER BY id DESC LIMIT 1
     `).get(userId);
 
-    // If no active session or expired, check if eligible to start a new 6-hour session
+    // If no active/unexpired 6-hour session exists, initialize a fresh 6-hour session
     if (!session) {
-      // Count sessions completed today
       const todayCountRow = db.prepare(`
         SELECT COUNT(*) AS count FROM reward_sessions
         WHERE user_id = ? AND date(start_time) = date('now')
       `).get(userId);
       const sessionsToday = todayCountRow ? todayCountRow.count : 0;
 
-      if (sessionsToday >= maxSessionsPerDay) {
-        return res.json({
-          success: true,
-          active: false,
-          daily_limit_reached: true,
-          message: `Daily session limit reached (${maxSessionsPerDay} sessions per 24 hours). Next session available tomorrow.`,
-          sessions_today: sessionsToday,
-          max_sessions_today: maxSessionsPerDay
-        });
-      }
-
-      // Auto-start new session
       const startTime = new Date().toISOString();
       const endTime = new Date(Date.now() + durationHours * 3600 * 1000).toISOString();
       const nextSessionNum = sessionsToday + 1;
@@ -1022,15 +1741,26 @@ router.get('/reward-session/status', (req, res) => {
       session = db.prepare('SELECT * FROM reward_sessions WHERE id = ?').get(result.lastInsertRowid);
     }
 
-    const now = new Date().getTime();
+    const now = Date.now();
     const end = new Date(session.end_time).getTime();
     const remainingSeconds = Math.max(0, Math.floor((end - now) / 1000));
-    const adsWatched = session.ads_watched || 0;
+    const verifiedAdsRow = db.prepare(`
+      SELECT COUNT(*) AS c FROM admob_ssv_verifications
+      WHERE user_id = ? AND session_type = 'reward_session' AND session_id = ? AND status = 'verified'
+    `).get(userId, session.id);
+    const adsWatched = Math.max(session.ads_watched || 0, verifiedAdsRow ? verifiedAdsRow.c : 0);
     const canWatchAd = adsWatched < adsPerSession && remainingSeconds > 0;
+
+    const verifications = db.prepare(`
+      SELECT id, ad_slot, status, reward_amount, reward_item, expires_at, verified_at, created_at
+      FROM admob_ssv_verifications
+      WHERE user_id = ? AND session_type = 'reward_session' AND session_id = ?
+      ORDER BY ad_slot ASC, id DESC
+    `).all(userId, session.id);
 
     return res.json({
       success: true,
-      active: true,
+      active: remainingSeconds > 0,
       session: {
         ...session,
         remaining_seconds: remainingSeconds,
@@ -1038,8 +1768,13 @@ router.get('/reward-session/status', (req, res) => {
         max_ads: adsPerSession,
         coins_earned: session.coins_earned || 0,
         can_watch_ad: canWatchAd,
-        coins_per_ad: coinsPerAd
-      }
+        coins_per_ad: coinsPerAd,
+        reward_item: SSV_REWARD_ITEM,
+        ssv_required: true,
+        admob_app_id: admobCfg.appId,
+        rewarded_ad_unit_id: admobCfg.rewardedAdUnitId
+      },
+      verifications
     });
   } catch (error) {
     console.error('Reward session status error:', error);
@@ -1047,9 +1782,254 @@ router.get('/reward-session/status', (req, res) => {
   }
 });
 
-// Watch Ad in Active 6-Hour Session
+// Prepare an individual pending AdMob SSV verification record for one of the 3 rewarded ads
+// in the customer's active 6-hour session. Does NOT credit coins.
+router.post('/reward-session/prepare-ad', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const admobCfg = getAdMobConfig();
+    const requestedSessionType = req.body && req.body.session_type ? String(req.body.session_type).trim() : null;
+
+    if (requestedSessionType && !['reward_session', 'vp52_coin_session'].includes(requestedSessionType)) {
+      return res.status(400).json({ success: false, error: 'Invalid session_type' });
+    }
+
+    const prepareTx = db.transaction(() => {
+      const nowMs = Date.now();
+      let sessionType = requestedSessionType;
+      let session = null;
+      let sessionEndMs = 0;
+
+      if (sessionType === 'vp52_coin_session') {
+        session = db.prepare(`
+          SELECT * FROM vp52_coin_sessions
+          WHERE user_id = ? AND status = 'active' AND datetime(expires_at) > datetime('now')
+          ORDER BY id DESC LIMIT 1
+        `).get(userId);
+        if (!session) {
+          return {
+            status: 400,
+            body: { success: false, error: 'No active 6-hour coin session found.' }
+          };
+        }
+        sessionEndMs = new Date(session.expires_at).getTime();
+      } else {
+        if (!sessionType) {
+          const activeCoinSession = db.prepare(`
+            SELECT * FROM vp52_coin_sessions
+            WHERE user_id = ? AND status = 'active' AND datetime(expires_at) > datetime('now')
+            ORDER BY id DESC LIMIT 1
+          `).get(userId);
+          const existingRewardSession = db.prepare(`
+            SELECT * FROM reward_sessions
+            WHERE user_id = ? AND datetime(end_time) > datetime('now')
+            ORDER BY id DESC LIMIT 1
+          `).get(userId);
+
+          if (!existingRewardSession && activeCoinSession) {
+            sessionType = 'vp52_coin_session';
+            session = activeCoinSession;
+            sessionEndMs = new Date(activeCoinSession.expires_at).getTime();
+          }
+        }
+
+        if (!session) {
+          sessionType = 'reward_session';
+          session = db.prepare(`
+            SELECT * FROM reward_sessions
+            WHERE user_id = ? AND datetime(end_time) > datetime('now')
+            ORDER BY id DESC LIMIT 1
+          `).get(userId);
+
+          if (!session) {
+            const todayCountRow = db.prepare(`
+              SELECT COUNT(*) AS count FROM reward_sessions
+              WHERE user_id = ? AND date(start_time) = date('now')
+            `).get(userId);
+            const sessionsToday = todayCountRow ? todayCountRow.count : 0;
+            const startTime = new Date(nowMs).toISOString();
+            const endTime = new Date(nowMs + SESSION_DURATION_HOURS * 3600 * 1000).toISOString();
+            const resIns = db.prepare(`
+              INSERT INTO reward_sessions (user_id, start_time, end_time, status, session_number_for_day, ads_watched, coins_earned)
+              VALUES (?, ?, ?, 'active', ?, 0, 0)
+            `).run(userId, startTime, endTime, sessionsToday + 1);
+            session = db.prepare('SELECT * FROM reward_sessions WHERE id = ?').get(resIns.lastInsertRowid);
+          }
+          sessionEndMs = new Date(session.end_time).getTime();
+        }
+      }
+
+      if (!Number.isFinite(sessionEndMs) || sessionEndMs <= nowMs) {
+        return {
+          status: 400,
+          body: { success: false, error: 'Current 6-hour session has expired.' }
+        };
+      }
+
+      // Mark expired pending verification records cleanly so unused stale slots become free again
+      db.prepare(`
+        UPDATE admob_ssv_verifications
+        SET status = 'expired', rejection_reason = 'Pending verification expired before callback', updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND session_type = ? AND session_id = ? AND status = 'pending' AND datetime(expires_at) <= datetime('now')
+      `).run(userId, sessionType, session.id);
+
+      const activeOrVerifiedRows = db.prepare(`
+        SELECT ad_slot, status
+        FROM admob_ssv_verifications
+        WHERE session_type = ? AND session_id = ? AND status IN ('pending', 'verified')
+      `).all(sessionType, session.id);
+
+      const verifiedCount = activeOrVerifiedRows.filter(r => r.status === 'verified').length;
+      const recordedAdsWatched = sessionType === 'reward_session' ? (session.ads_watched || 0) : 0;
+      if (verifiedCount >= MAX_ADS_PER_SESSION || recordedAdsWatched >= MAX_ADS_PER_SESSION) {
+        return {
+          status: 400,
+          body: {
+            success: false,
+            code: 'SESSION_AD_LIMIT_REACHED',
+            error: `Maximum of ${MAX_ADS_PER_SESSION} rewarded ads per 6-hour session has already been reached.`
+          }
+        };
+      }
+
+      const occupiedSlots = new Set(activeOrVerifiedRows.map(r => r.ad_slot));
+      let nextSlot = null;
+      for (let slot = 1; slot <= MAX_ADS_PER_SESSION; slot++) {
+        if (!occupiedSlots.has(slot)) {
+          nextSlot = slot;
+          break;
+        }
+      }
+
+      if (nextSlot === null) {
+        return {
+          status: 400,
+          body: {
+            success: false,
+            code: 'ALL_SLOTS_ALLOCATED',
+            error: `All ${MAX_ADS_PER_SESSION} rewarded ad slots in this 6-hour session already have pending or verified records.`
+          }
+        };
+      }
+
+      const verificationToken = `VP52SSV_${crypto.randomBytes(24).toString('base64url')}`;
+      const pendingExpiresMs = Math.min(nowMs + admobCfg.pendingTtlSeconds * 1000, sessionEndMs);
+      const pendingExpiresAt = new Date(pendingExpiresMs).toISOString();
+
+      const ins = db.prepare(`
+        INSERT INTO admob_ssv_verifications (
+          verification_token, user_id, session_type, session_id, ad_slot,
+          app_id, ad_unit_id, reward_item, reward_amount, status, expires_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+      `).run(
+        verificationToken,
+        userId,
+        sessionType,
+        session.id,
+        nextSlot,
+        admobCfg.appId,
+        admobCfg.rewardedAdUnitId,
+        SSV_REWARD_ITEM,
+        SSV_REWARD_AMOUNT,
+        pendingExpiresAt
+      );
+
+      return {
+        status: 201,
+        body: {
+          success: true,
+          verification: {
+            id: ins.lastInsertRowid,
+            verification_token: verificationToken,
+            custom_data: verificationToken,
+            user_id: String(userId),
+            session_type: sessionType,
+            session_id: session.id,
+            ad_slot: nextSlot,
+            max_ads: MAX_ADS_PER_SESSION,
+            ads_verified: verifiedCount,
+            app_id: admobCfg.appId,
+            ad_unit_id: admobCfg.rewardedAdUnitId,
+            reward_amount: SSV_REWARD_AMOUNT,
+            reward_item: SSV_REWARD_ITEM,
+            status: 'pending',
+            expires_at: pendingExpiresAt
+          }
+        }
+      };
+    });
+
+    const outcome = prepareTx.immediate();
+    return res.status(outcome.status).json(outcome.body);
+  } catch (error) {
+    console.error('Prepare rewarded ad SSV record error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to prepare rewarded ad verification record' });
+  }
+});
+
+// Release an unused pending verification slot ONLY if still pending (never credits coins;
+// used when native SDK fails to load/show or user dismisses ad early before completion)
+router.post('/reward-session/cancel-pending-ad', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const tokenVal = req.body && req.body.verification_token ? String(req.body.verification_token).trim() : '';
+    const reason = req.body && req.body.reason ? String(req.body.reason).trim().slice(0, 120) : 'Client ad aborted before completion';
+
+    if (!tokenVal) {
+      return res.status(400).json({ success: false, error: 'verification_token is required' });
+    }
+
+    const upd = db.prepare(`
+      UPDATE admob_ssv_verifications
+      SET status = 'rejected',
+          rejection_reason = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE verification_token = ? AND user_id = ? AND status = 'pending'
+    `).run(reason, tokenVal, userId);
+
+    return res.json({
+      success: true,
+      cancelled: upd.changes === 1,
+      coins_credited: 0
+    });
+  } catch (error) {
+    console.error('Cancel pending SSV ad error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to cancel pending ad slot' });
+  }
+});
+
+// List SSV verification records for customer's current 6-hour session
+router.get('/reward-session/verifications', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const records = db.prepare(`
+      SELECT id, verification_token, session_type, session_id, ad_slot, app_id, ad_unit_id,
+             reward_item, reward_amount, status, transaction_id, expires_at, verified_at, created_at
+      FROM admob_ssv_verifications
+      WHERE user_id = ?
+      ORDER BY id DESC
+      LIMIT 20
+    `).all(userId);
+    return res.json({ success: true, verifications: records });
+  } catch (error) {
+    console.error('Fetch SSV verifications error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch SSV verification records' });
+  }
+});
+
+// Watch Ad in Active 6-Hour Session (Legacy) — Fail-closed against client-only callbacks.
 router.post('/reward-session/watch-ad', (req, res) => {
   try {
+    const ssvVerified = req.admobSsvVerified === true;
+    if (!ssvVerified) {
+      return res.status(403).json({
+        success: false,
+        code: 'REWARDED_AD_VERIFICATION_REQUIRED',
+        error: 'Rewarded ad coins cannot be credited from a client callback without server-side verification.'
+      });
+    }
+
     const userId = req.user.id;
     const adsPerSession = parseInt(getRewardSetting('ads_per_session', '3'), 10);
     const coinsPerAd = parseInt(getRewardSetting('coins_per_ad', '2'), 10);
@@ -1449,7 +2429,7 @@ router.patch('/conversations/:id/read', markCustomerConversationRead);
 router.put('/conversations/:id/read', markCustomerConversationRead);
 
 // DELETE /api/customer/account - Immediate In-App Customer Account Deletion (Google Play Compliance)
-router.delete('/account', (req, res) => {
+router.delete('/account', customerAccountDeletionLimiter, (req, res) => {
   try {
     const customerId = req.user.id;
     const user = db.prepare('SELECT id, email, phone FROM users WHERE id = ?').get(customerId);
@@ -1502,6 +2482,361 @@ router.delete('/account', (req, res) => {
   } catch (error) {
     console.error('Account deletion error:', error);
     return res.status(500).json({ success: false, error: 'Failed to delete account. Please try again or contact support.' });
+  }
+});
+
+// ============================================================
+// PERMANENT MERCHANT QR & CUSTOMER COIN TRANSFER SYSTEM
+// ============================================================
+
+// POST /api/customer/merchant-qr/lookup — Customer scans merchant permanent QR, backend validates
+router.post('/merchant-qr/lookup', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { qr_code } = req.body;
+
+    if (!qr_code || !qr_code.trim()) {
+      return res.status(400).json({ success: false, error: 'Merchant QR code payload is required.' });
+    }
+
+    const cleanCode = qr_code.trim().replace(/^VP52:MERCHANT:/i, '');
+
+    const shop = db.prepare(`
+      SELECT id, shop_code, name, category, address, city, phone, image_url, logo_url,
+             status, verification_status, permanent_qr_code, qr_status, rating
+      FROM shops
+      WHERE permanent_qr_code = ?
+    `).get(cleanCode);
+
+    if (!shop) {
+      const revoked = db.prepare('SELECT * FROM merchant_revoked_qr_codes WHERE qr_code = ?').get(cleanCode);
+      if (revoked) {
+        return res.status(403).json({ success: false, error: 'This merchant QR code has been revoked. Please ask the merchant for their updated QR code.' });
+      }
+      return res.status(404).json({ success: false, error: 'Merchant QR code not recognized or invalid.' });
+    }
+
+    if (shop.status === 'suspended' || shop.verification_status === 'suspended' || shop.qr_status === 'suspended') {
+      return res.status(403).json({ success: false, error: 'This merchant QR code is currently suspended by administration.' });
+    }
+
+    if (shop.verification_status === 'rejected' || shop.status === 'rejected') {
+      return res.status(403).json({ success: false, error: 'This merchant account was rejected and cannot accept coin payments.' });
+    }
+
+    if (shop.qr_status === 'revoked') {
+      return res.status(403).json({ success: false, error: 'This merchant QR code has been revoked. Please ask the merchant for their updated QR code.' });
+    }
+
+    if (shop.status !== 'active' || shop.verification_status !== 'approved' || shop.qr_status !== 'active') {
+      return res.status(403).json({ success: false, error: 'This merchant is pending approval or currently not active.' });
+    }
+
+    // Fetch customer available balance
+    const wallet = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(userId);
+    const balance = wallet ? wallet.balance : 0;
+
+    return res.json({
+      success: true,
+      merchant: {
+        id: shop.id,
+        shop_code: shop.shop_code || `SHOP-00${shop.id}`,
+        name: shop.name,
+        category: shop.category,
+        address: shop.address,
+        city: shop.city,
+        phone: shop.phone,
+        image_url: shop.image_url,
+        logo_url: shop.logo_url,
+        verification_status: shop.verification_status,
+        permanent_qr_code: shop.permanent_qr_code,
+        rating: shop.rating || 4.8
+      },
+      customer_balance: balance
+    });
+  } catch (err) {
+    console.error('Customer merchant QR lookup error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to look up merchant details' });
+  }
+});
+
+// POST /api/customer/merchant-qr/pay — Customer confirms coin payment to merchant permanent QR
+router.post('/merchant-qr/pay', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { qr_code, coins_amount, idempotency_key } = req.body;
+
+    if (!qr_code || !qr_code.trim()) {
+      return res.status(400).json({ success: false, error: 'Merchant QR code is required.' });
+    }
+
+    const cleanCode = qr_code.trim().replace(/^VP52:MERCHANT:/i, '');
+
+    const num = Number(coins_amount);
+    if (!Number.isInteger(num) || num <= 0) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid positive whole number of coins.' });
+    }
+    const coinsToPay = num;
+
+    // Idempotency check: prevent duplicate payments
+    if (idempotency_key && idempotency_key.trim()) {
+      const existing = db.prepare(`
+        SELECT ct.*, s.name AS merchant_name, s.category AS merchant_category, s.logo_url AS merchant_logo, s.image_url AS merchant_image
+        FROM coin_transfers ct
+        JOIN shops s ON ct.merchant_id = s.id
+        WHERE ct.idempotency_key = ? AND ct.customer_id = ?
+      `).get(idempotency_key.trim(), userId);
+
+      if (existing) {
+        return res.json({
+          success: true,
+          message: 'Payment already processed (idempotent)',
+          transfer: {
+            transfer_id: existing.transfer_id,
+            coins_amount: existing.coins_amount,
+            discount_inr: existing.discount_inr,
+            merchant_id: existing.merchant_id,
+            merchant_name: existing.merchant_name,
+            merchant_category: existing.merchant_category,
+            merchant_logo: existing.merchant_logo || existing.merchant_image,
+            customer_balance_after: existing.customer_new_balance,
+            timestamp: existing.created_at,
+            status: existing.status
+          }
+        });
+      }
+    }
+
+    // Validate customer exists and active
+    const customer = db.prepare('SELECT id, full_name, phone, status FROM users WHERE id = ?').get(userId);
+    if (!customer || customer.status !== 'active') {
+      return res.status(403).json({ success: false, error: 'Customer account is not active.' });
+    }
+
+    // Validate merchant QR
+    const shop = db.prepare(`
+      SELECT id, shop_code, name, category, address, phone, logo_url, image_url, status, verification_status, qr_status
+      FROM shops
+      WHERE permanent_qr_code = ?
+    `).get(cleanCode);
+
+    if (!shop) {
+      const revoked = db.prepare('SELECT * FROM merchant_revoked_qr_codes WHERE qr_code = ?').get(cleanCode);
+      if (revoked) {
+        return res.status(403).json({ success: false, error: 'This merchant QR code has been revoked.' });
+      }
+      return res.status(404).json({ success: false, error: 'Merchant QR code not recognized.' });
+    }
+
+    if (shop.status === 'suspended' || shop.verification_status === 'suspended' || shop.qr_status === 'suspended') {
+      return res.status(403).json({ success: false, error: 'This merchant QR code is suspended.' });
+    }
+
+    if (shop.verification_status === 'rejected' || shop.status === 'rejected') {
+      return res.status(403).json({ success: false, error: 'This merchant account was rejected and cannot receive coin payments.' });
+    }
+
+    if (shop.qr_status === 'revoked') {
+      return res.status(403).json({ success: false, error: 'This merchant QR code has been revoked.' });
+    }
+
+    if (shop.status !== 'active' || shop.verification_status !== 'approved' || shop.qr_status !== 'active') {
+      return res.status(403).json({ success: false, error: 'This merchant is pending approval or currently not active.' });
+    }
+
+    // Reconcile any matured/expired lots before checking customer balance
+    reconcileTierTransitions(userId);
+
+    // ATOMIC TRANSACTION: double-entry transfer (Customer debit == Merchant credit)
+    const executeTransfer = db.transaction(() => {
+      // 0. Lock and re-verify customer wallet balance & FIFO lots inside transaction
+      const wallet = db.prepare('SELECT balance FROM wallets WHERE user_id = ?').get(userId);
+      if (!wallet || wallet.balance < coinsToPay) {
+        return {
+          errorStatus: 400,
+          error: `Insufficient coin balance. Available: ${wallet ? wallet.balance : 0} coins, requested: ${coinsToPay} coins.`
+        };
+      }
+
+      const activeLots = db.prepare(`
+        SELECT id, coins_remaining, expires_at
+        FROM coin_lots
+        WHERE user_id = ?
+          AND status IN ('ACTIVE', 'PARTIALLY_USED')
+          AND coins_remaining > 0
+          AND datetime(expires_at) > datetime('now')
+        ORDER BY expires_at ASC, id ASC
+      `).all(userId);
+
+      const totalAvailableInLots = activeLots.reduce((sum, l) => sum + l.coins_remaining, 0);
+      if (totalAvailableInLots < coinsToPay) {
+        return {
+          errorStatus: 400,
+          error: `Only ${totalAvailableInLots} unexpired coins are available in your wallet for payment.`
+        };
+      }
+
+      // 1. Debit customer wallet
+      const custPrevBalance = wallet.balance;
+      const custNewBalance = custPrevBalance - coinsToPay;
+      db.prepare(`
+        UPDATE wallets
+        SET balance = ?, total_redeemed = total_redeemed + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+      `).run(custNewBalance, coinsToPay, userId);
+
+      // 2. Consume FIFO lots (preserving PARTIALLY_USED vs USED status)
+      let needed = coinsToPay;
+      for (const lot of activeLots) {
+        if (needed <= 0) break;
+        if (lot.coins_remaining <= needed) {
+          needed -= lot.coins_remaining;
+          db.prepare("UPDATE coin_lots SET coins_remaining = 0, status = 'USED' WHERE id = ?").run(lot.id);
+        } else {
+          const newRemaining = lot.coins_remaining - needed;
+          db.prepare("UPDATE coin_lots SET coins_remaining = ?, status = 'PARTIALLY_USED' WHERE id = ?").run(newRemaining, lot.id);
+          needed = 0;
+        }
+      }
+
+      // 3. Credit merchant wallet
+      db.prepare('INSERT OR IGNORE INTO merchant_wallets (shop_id, balance, total_received, total_spent) VALUES (?, 0, 0, 0)').run(shop.id);
+      const merchWallet = db.prepare('SELECT balance, total_received FROM merchant_wallets WHERE shop_id = ?').get(shop.id);
+      const merchPrevBalance = merchWallet ? merchWallet.balance : 0;
+      const merchNewBalance = merchPrevBalance + coinsToPay;
+
+      db.prepare(`
+        UPDATE merchant_wallets
+        SET balance = ?, total_received = total_received + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE shop_id = ?
+      `).run(merchNewBalance, coinsToPay, shop.id);
+
+      // 4. Generate unique IDs
+      const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+      const transferId = 'TX-MCH-' + uniqueSuffix;
+      const redemptionId = 'RED-MCH-' + uniqueSuffix;
+      const secureToken = 'VP52-MCH-TX-' + crypto.randomBytes(8).toString('hex').toUpperCase();
+
+      // 5. Audit record in point_ledger (Customer debit)
+      db.prepare(`
+        INSERT INTO point_ledger (user_id, transaction_id, type, points, previous_balance, new_balance, merchant_id, reason)
+        VALUES (?, ?, 'redeemed', ?, ?, ?, ?, ?)
+      `).run(
+        userId,
+        transferId,
+        -coinsToPay,
+        custPrevBalance,
+        custNewBalance,
+        shop.id,
+        `Paid ${coinsToPay} coins to ${shop.name} via Permanent Merchant QR`
+      );
+
+      // 6. Insert completed coin_redemption_requests row to maintain foreign-key and reporting invariants
+      db.prepare(`
+        INSERT INTO coin_redemption_requests (redemption_id, secure_token, user_id, merchant_id, coins_amount, discount_inr, status, expires_at, completed_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'completed', datetime('now', '+15 minutes'), CURRENT_TIMESTAMP)
+      `).run(redemptionId, secureToken, userId, shop.id, coinsToPay, coinsToPay);
+
+      // 7. Audit record in merchant_coin_ledger (Merchant credit)
+      db.prepare(`
+        INSERT INTO merchant_coin_ledger (shop_id, transaction_id, redemption_id, customer_id, type, coins, previous_balance, new_balance, description)
+        VALUES (?, ?, ?, ?, 'CUSTOMER_REDEMPTION', ?, ?, ?, ?)
+      `).run(
+        shop.id,
+        transferId,
+        redemptionId,
+        userId,
+        coinsToPay,
+        merchPrevBalance,
+        merchNewBalance,
+        `Received ${coinsToPay} coins (₹${coinsToPay} discount) from ${customer.full_name} via Permanent QR`
+      );
+
+      // 8. Permanent double-entry record in coin_transfers
+      db.prepare(`
+        INSERT INTO coin_transfers (
+          transfer_id, redemption_id, customer_id, merchant_id,
+          coins_amount, discount_inr,
+          customer_previous_balance, customer_new_balance,
+          merchant_previous_balance, merchant_new_balance,
+          merchant_qr_code, idempotency_key, status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'COMPLETED')
+      `).run(
+        transferId, redemptionId, userId, shop.id,
+        coinsToPay, coinsToPay,
+        custPrevBalance, custNewBalance,
+        merchPrevBalance, merchNewBalance,
+        cleanCode, idempotency_key ? idempotency_key.trim() : null
+      );
+
+      // 9. Send real-time in-app notification to merchant
+      db.prepare(`
+        INSERT INTO merchant_notifications (shop_id, title, message, notification_type, metadata)
+        VALUES (?, 'VP52 COINS RECEIVED', ?, 'coin_received', ?)
+      `).run(
+        shop.id,
+        `Received ${coinsToPay} coins (₹${coinsToPay} discount) from ${customer.full_name}`,
+        JSON.stringify({
+          transfer_id: transferId,
+          coins_amount: coinsToPay,
+          discount_inr: coinsToPay,
+          customer_name: customer.full_name,
+          customer_phone: customer.phone,
+          timestamp: new Date().toISOString()
+        })
+      );
+
+      return {
+        transfer_id: transferId,
+        coins_amount: coinsToPay,
+        discount_inr: coinsToPay,
+        merchant_id: shop.id,
+        merchant_name: shop.name,
+        merchant_category: shop.category,
+        merchant_logo: shop.logo_url || shop.image_url,
+        customer_balance_after: custNewBalance,
+        timestamp: new Date().toISOString(),
+        status: 'COMPLETED'
+      };
+    });
+
+    const transfer = executeTransfer();
+
+    if (transfer && transfer.errorStatus) {
+      return res.status(transfer.errorStatus).json({ success: false, error: transfer.error });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Coins transferred successfully to merchant',
+      transfer
+    });
+  } catch (err) {
+    console.error('Customer merchant QR pay error:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Payment failed' });
+  }
+});
+
+// GET /api/customer/merchant-qr/transfers — Customer payment history with merchant QR
+router.get('/merchant-qr/transfers', (req, res) => {
+  try {
+    const userId = req.user.id;
+    const transfers = db.prepare(`
+      SELECT ct.id, ct.transfer_id, ct.coins_amount, ct.discount_inr, ct.created_at, ct.status,
+             s.id AS merchant_id, s.name AS merchant_name, s.category AS merchant_category,
+             s.image_url AS merchant_image, s.logo_url AS merchant_logo, s.phone AS merchant_phone
+      FROM coin_transfers ct
+      JOIN shops s ON ct.merchant_id = s.id
+      WHERE ct.customer_id = ?
+      ORDER BY ct.created_at DESC
+      LIMIT 100
+    `).all(userId);
+
+    return res.json({ success: true, transfers });
+  } catch (err) {
+    console.error('Customer fetch merchant transfers error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch transfer history' });
   }
 });
 

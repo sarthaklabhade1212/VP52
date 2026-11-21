@@ -1,7 +1,14 @@
+const fs = require('fs');
 const path = require('path');
+const dotenvPath = process.env.DOTENV_PATH || (process.env.NODE_ENV === 'staging' ? path.join(__dirname, '.env.staging') : path.join(__dirname, '.env'));
 require('dotenv').config({
-  path: path.join(__dirname, '.env')
+  path: dotenvPath
 });
+
+if (process.env.NODE_ENV === 'staging') {
+  const { validateStagingEnvironment } = require('./config/stagingGuard');
+  validateStagingEnvironment();
+}
 
 const express = require('express');
 const cors = require('cors');
@@ -13,9 +20,17 @@ const customerRoutes = require('./routes/customer');
 const adminRoutes = require('./routes/admin');
 const shopRoutes = require('./routes/shop');
 const merchantRoutes = require('./routes/merchant');
+const uploadRoutes = require('./routes/upload');
+const admobRoutes = require('./routes/admob');
+const { logGoogleOAuthStartupDiagnostics } = require('./utils/googleOAuth');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Trust local reverse proxy (Nginx on 127.0.0.1 / ::1) for accurate req.ip without
+// blindly trusting client-spoofed X-Forwarded-For headers from untrusted peers.
+const trustProxySetting = process.env.TRUST_PROXY || 'loopback';
+app.set('trust proxy', trustProxySetting);
 
 // ============================================================
 // Environment / configuration
@@ -31,17 +46,28 @@ const seedDemoData = process.env.SEED_DEMO_DATA === 'true';
 // Enable CORS for Vite frontend
 app.use(cors());
 
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+// Static uploads directory
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.join(__dirname, 'public', 'uploads');
+app.use('/uploads', express.static(uploadDir));
 
 // ============================================================
 // API Routes
 // ============================================================
 
 app.use('/api/auth', authRoutes);
+// Public AdMob SSV callback alias mounted before customer bearer auth
+app.use('/api/customer/admob-ssv', admobRoutes);
 app.use('/api/customer', customerRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/shop', shopRoutes);
 app.use('/api/merchant', merchantRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/admob', admobRoutes);
 
 // ============================================================
 // Health check endpoint
@@ -90,26 +116,75 @@ if (!isProduction && seedDemoData) {
 }
 
 // ============================================================
-// Start server
+// Start server (supports staging HTTPS mode when configured)
 // ============================================================
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('====================================================');
-  console.log(`🚀 Rewards App API Server running on port ${PORT}`);
+let server;
+const stagingCertPath = path.join(__dirname, 'certs', 'staging.crt');
+const stagingKeyPath = path.join(__dirname, 'certs', 'staging.key');
 
-  // Never print credentials in production.
-  // Only show development demo accounts when explicitly enabled.
-  if (!isProduction && seedDemoData) {
-    console.log(
-      '👉 [dev] Customer: customer@example.com / Customer@123'
-    );
-    console.log(
-      '👉 [dev] Shop:     shop@example.com / Shop@123'
-    );
-    console.log(
-      '👉 [dev] Admin:    admin@example.com / Admin@123'
-    );
-  }
+if (process.env.STAGING_ENFORCE_HTTPS === 'true' && fs.existsSync(stagingCertPath) && fs.existsSync(stagingKeyPath)) {
+  const https = require('https');
+  const httpsOptions = {
+    key: fs.readFileSync(stagingKeyPath),
+    cert: fs.readFileSync(stagingCertPath)
+  };
+  server = https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
+    console.log('====================================================');
+    console.log(`🔒 Rewards App Staging HTTPS API Server running on port ${PORT}`);
+    console.log('====================================================');
+  });
+} else {
+  server = app.listen(PORT, '0.0.0.0', () => {
+    console.log('====================================================');
+    console.log(`🚀 Rewards App API Server running on port ${PORT}`);
+    logGoogleOAuthStartupDiagnostics();
 
-  console.log('====================================================');
-});
+    // Never print credentials in production.
+    // Only show development demo accounts when explicitly enabled.
+    if (!isProduction && seedDemoData) {
+      console.log(
+        '👉 [dev] Customer: customer@example.com / Customer@123'
+      );
+      console.log(
+        '👉 [dev] Shop:     shop@example.com / Shop@123'
+      );
+      console.log(
+        '👉 [dev] Admin:    admin@example.com / Admin@123'
+      );
+    }
+
+    console.log('====================================================');
+  });
+}
+
+let isShuttingDown = false;
+function gracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`[shutdown] Received ${signal}. Closing HTTP server and SQLite database...`);
+
+  const forceExitTimer = setTimeout(() => {
+    try {
+      if (db && db.open) db.close();
+    } catch (_) {}
+    process.exit(0);
+  }, 5000);
+  if (forceExitTimer.unref) forceExitTimer.unref();
+
+  server.close(() => {
+    try {
+      if (db && db.open) {
+        db.close();
+      }
+      console.log(`[shutdown] Clean exit after ${signal}.`);
+      process.exit(0);
+    } catch (err) {
+      console.error('[shutdown] Error closing database:', err);
+      process.exit(1);
+    }
+  });
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

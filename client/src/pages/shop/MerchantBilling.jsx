@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useI18n } from '../../i18n/I18nContext';
+import { parseApiResponse, resolveApiErrorMessage, resolveNetworkErrorMessage } from '../../utils/api';
+import { formatInr, formatCoins } from '../../utils/formatters';
 import { Receipt, Trash2, CheckCircle2 } from 'lucide-react';
 
 export default function MerchantBilling() {
   const { token } = useAuth();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [products, setProducts] = useState([]);
   const [customerIdentifier, setCustomerIdentifier] = useState('');
   const [billItems, setBillItems] = useState([
@@ -21,8 +23,11 @@ export default function MerchantBilling() {
     fetch('/api/merchant/products', {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(res => res.json())
-      .then(d => { if (d.success) setProducts(d.products || []); })
+      .then(parseApiResponse)
+      .then(parsed => {
+        const d = parsed.data;
+        if (parsed.ok && d && d.success) setProducts(d.products || []);
+      })
       .catch(console.error);
   }, [token]);
 
@@ -58,8 +63,8 @@ export default function MerchantBilling() {
   const estimatedPoints = Math.floor(eligibleAmount * 0.10);
 
   const handleGenerateBill = async () => {
-    if (!customerIdentifier) return setError('Please enter customer email or mobile');
-    if (billItems.length === 0) return setError('Add at least one item to the bill');
+    if (!customerIdentifier) return setError(t('enterCustomerIdentifierError'));
+    if (billItems.length === 0) return setError(t('addBillItemError'));
 
     setError(null);
     setLoading(true);
@@ -77,14 +82,15 @@ export default function MerchantBilling() {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to generate bill');
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (!parsed.ok || !data || !data.success) {
+        throw new Error(resolveApiErrorMessage(parsed, t, 'failedGenerateBillError'));
       }
 
       setBillResult(data.bill);
     } catch (err) {
-      setError(err.message);
+      setError(resolveNetworkErrorMessage(err, t, 'failedGenerateBillError'));
     } finally {
       setLoading(false);
     }
@@ -108,40 +114,40 @@ export default function MerchantBilling() {
           </div>
 
           <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#FFFFFF', marginBottom: '4px' }}>
-            Bill #{billResult.bill_number}
+            {t('billNumberTitle', { number: billResult.bill_number })}
           </h3>
           <p style={{ fontSize: '14px', color: '#B8B8B8', marginBottom: '20px' }}>
-            Customer: <strong style={{ color: '#FFFFFF' }}>{billResult.customer_name}</strong>
+            {t('customerLabel')}: <strong style={{ color: '#FFFFFF' }}>{billResult.customer_name}</strong>
           </p>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '24px' }}>
             <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
               <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>{t('totalItemsBill')}</span>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#FFFFFF' }}>₹{billResult.total_amount}</div>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#FFFFFF' }}>{formatInr(billResult.total_amount, locale)}</div>
             </div>
 
             <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
               <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>{t('rewardEligibleAmount')}</span>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#F2D675' }}>₹{billResult.eligible_amount}</div>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#F2D675' }}>{formatInr(billResult.eligible_amount, locale)}</div>
             </div>
 
             <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>Reward Coins</span>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#D4AF37' }}>+🪙 {billResult.points_awarded}</div>
+              <span style={{ fontSize: '11px', color: '#B8B8B8', textTransform: 'uppercase', fontWeight: 700 }}>{t('rewardCoinsLabel')}</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#D4AF37' }}>+🪙 {formatCoins(billResult.points_awarded, locale, t('coinsUnit'))}</div>
             </div>
           </div>
 
-          <button onClick={() => setBillResult(null)} className="btn-primary" style={{ padding: '12px 24px' }}>
-            Create Another Bill
+          <button type="button" onClick={() => setBillResult(null)} className="btn-primary" style={{ padding: '12px 24px' }}>
+            {t('createAnotherBillBtn')}
           </button>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px' }}>
           {/* Left Column: Bill Items Entry Table */}
           <div style={{ background: '#111111', borderRadius: '20px', padding: '24px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-            <h3 style={{ fontSize: '16px', color: '#FFFFFF', marginBottom: '16px', fontWeight: 800 }}>Current Bill Items</h3>
+            <h3 style={{ fontSize: '16px', color: '#FFFFFF', marginBottom: '16px', fontWeight: 800 }}>{t('currentBillItemsTitle')}</h3>
 
-            {error && <div style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px', borderRadius: '10px', fontSize: '13px', marginBottom: '12px' }}>{error}</div>}
+            {error && <div role="alert" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '10px', borderRadius: '10px', fontSize: '13px', marginBottom: '12px' }}>{error}</div>}
 
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px', marginBottom: '20px' }}>
               <thead>
@@ -149,7 +155,7 @@ export default function MerchantBilling() {
                   <th style={{ padding: '8px' }}>{t('productNameHeader')}</th>
                   <th style={{ padding: '8px' }}>{t('priceHeader')}</th>
                   <th style={{ padding: '8px' }}>{t('qtyHeader')}</th>
-                  <th style={{ padding: '8px' }}>Eligible?</th>
+                  <th style={{ padding: '8px' }}>{t('eligibleColHeader')}</th>
                   <th style={{ padding: '8px' }}>{t('subtotalHeader')}</th>
                   <th style={{ padding: '8px' }}></th>
                 </tr>
@@ -158,17 +164,17 @@ export default function MerchantBilling() {
                 {billItems.map((item, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid rgba(212, 175, 55, 0.1)' }}>
                     <td style={{ padding: '10px 8px', fontWeight: 700, color: '#FFFFFF' }}>{item.product_name}</td>
-                    <td style={{ padding: '10px 8px', color: '#B8B8B8' }}>₹{item.price}</td>
+                    <td style={{ padding: '10px 8px', color: '#B8B8B8' }}>{formatInr(item.price, locale)}</td>
                     <td style={{ padding: '10px 8px' }}>
                       <input type="number" min="1" value={item.quantity} onChange={(e) => handleQuantityChange(idx, e.target.value)} style={{ width: '45px', padding: '4px', borderRadius: '6px', border: '1px solid #303030', background: '#151515', color: '#FFFFFF' }} />
                     </td>
                     <td style={{ padding: '10px 8px' }}>
-                      {item.reward_eligible ? <span style={{ color: '#F2D675', fontWeight: 700 }}>✅ Yes</span> : <span style={{ color: '#ef4444', fontWeight: 700 }}>🚫 No</span>}
+                      {item.reward_eligible ? <span style={{ color: '#F2D675', fontWeight: 700 }}>{t('yesCheckLabel')}</span> : <span style={{ color: '#ef4444', fontWeight: 700 }}>{t('noCrossLabel')}</span>}
                     </td>
-                    <td style={{ padding: '10px 8px', fontWeight: 800, color: '#FFFFFF' }}>₹{item.price * item.quantity}</td>
+                    <td style={{ padding: '10px 8px', fontWeight: 800, color: '#FFFFFF' }}>{formatInr((item.price || 0) * (item.quantity || 0), locale)}</td>
                     <td style={{ padding: '10px 8px' }}>
-                      <button onClick={() => handleRemoveItem(idx)} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer' }}>
-                        <Trash2 size={14} color="#ef4444" />
+                      <button type="button" aria-label={t('removeItemAria')} onClick={() => handleRemoveItem(idx)} style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer' }}>
+                        <Trash2 size={14} color="#ef4444" aria-hidden="true" />
                       </button>
                     </td>
                   </tr>
@@ -178,11 +184,11 @@ export default function MerchantBilling() {
 
             {/* Quick Catalog Item Selector */}
             <div style={{ paddingTop: '16px', borderTop: '1px solid rgba(212, 175, 55, 0.15)' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '8px' }}>+ QUICK ADD FROM CATALOG</span>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', display: 'block', marginBottom: '8px' }}>{t('quickAddCatalogUpper')}</span>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {products.map(p => (
-                  <button key={p.id} onClick={() => handleAddItemFromCatalog(p)} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }}>
-                    + {p.name} (₹{p.price})
+                  <button type="button" key={p.id} onClick={() => handleAddItemFromCatalog(p)} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '12px' }}>
+                    + {p.name} ({formatInr(p.price, locale)})
                   </button>
                 ))}
               </div>
@@ -191,27 +197,27 @@ export default function MerchantBilling() {
 
           {/* Right Column: Customer Info & Calculation Summary */}
           <div style={{ background: '#111111', borderRadius: '20px', padding: '24px', border: '1px solid rgba(212, 175, 55, 0.15)' }}>
-            <h3 style={{ fontSize: '16px', color: '#FFFFFF', marginBottom: '16px', fontWeight: 800 }}>Bill Summary</h3>
+            <h3 style={{ fontSize: '16px', color: '#FFFFFF', marginBottom: '16px', fontWeight: 800 }}>{t('billSummaryTitle')}</h3>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', marginBottom: '4px', display: 'block' }}>Customer Mobile / Email</label>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#B8B8B8', marginBottom: '4px', display: 'block' }}>{t('customerMobileEmailLabel')}</label>
               <input type="text" className="form-input" placeholder="customer@example.com" value={customerIdentifier} onChange={(e) => setCustomerIdentifier(e.target.value)} />
             </div>
 
             <div style={{ background: '#151515', padding: '16px', borderRadius: '14px', border: '1px solid rgba(212, 175, 55, 0.15)', marginBottom: '20px', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#B8B8B8' }}>
-                <span>{t('totalItemsBill')}:</span> <strong style={{ color: '#FFFFFF' }}>₹{totalBillAmount}</strong>
+                <span>{t('totalItemsBill')}:</span> <strong style={{ color: '#FFFFFF' }}>{formatInr(totalBillAmount, locale)}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#F2D675', fontWeight: 700 }}>
-                <span>{t('rewardEligibleAmount')}:</span> <strong>₹{eligibleAmount}</strong>
+                <span>{t('rewardEligibleAmount')}:</span> <strong>{formatInr(eligibleAmount, locale)}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#D4AF37', fontWeight: 800, paddingTop: '6px', borderTop: '1px solid rgba(212, 175, 55, 0.15)' }}>
-                <span>Estimated Coins:</span> <strong>+🪙 {estimatedPoints}</strong>
+                <span>{t('estimatedCoinsLabel')}</span> <strong>+🪙 {formatCoins(estimatedPoints, locale, t('coinsUnit'))}</strong>
               </div>
             </div>
 
-            <button onClick={handleGenerateBill} disabled={loading} className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}>
-              {loading ? 'Processing...' : t('approveAndCompleteBilling')}
+            <button type="button" onClick={handleGenerateBill} disabled={loading} className="btn-primary" style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}>
+              {loading ? t('processingBtn') : t('approveAndCompleteBilling')}
             </button>
           </div>
         </div>

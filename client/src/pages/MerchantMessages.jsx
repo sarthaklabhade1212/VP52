@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageCircle, AlertCircle, RefreshCw, ChevronRight, User } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
-import { apiFetch } from '../utils/api';
+import { apiFetch, parseApiResponse } from '../utils/api';
 
 const LIST_POLL_MS = 10000;
 
@@ -26,9 +26,9 @@ export default function MerchantMessages() {
     }
     try {
       const res = await apiFetch('/api/merchant/conversations');
-      if (!res.ok) { if (initial) setStatus('error'); return; }
-      const data = await res.json();
-      if (data && data.success) {
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success) {
         setConversations(Array.isArray(data.conversations) ? data.conversations : []);
         setStatus('ready');
       } else if (initial) {

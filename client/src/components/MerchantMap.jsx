@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useI18n } from '../i18n/I18nContext';
 
 export default function MerchantMap({
   userLat = 18.5204,
@@ -8,9 +9,12 @@ export default function MerchantMap({
   isPinDropMode = false,
   onPinDropped
 }) {
+  const { lang, t, translateCategory } = useI18n();
   const mapRef = useRef(null);
   const leafletInstance = useRef(null);
   const markersRef = useRef([]);
+  const userMarkerRef = useRef(null);
+  const pinMarkerRef = useRef(null);
 
   useEffect(() => {
     if (!document.getElementById('leaflet-css')) {
@@ -21,23 +25,64 @@ export default function MerchantMap({
       document.head.appendChild(link);
     }
 
-    const loadLeaflet = () => {
-      if (window.L) {
-        initMap();
-        return;
+    const renderMerchantMarkers = (L, map) => {
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+
+      merchants.forEach(m => {
+        const lat = m.latitude || 18.5204;
+        const lng = m.longitude || 73.8567;
+
+        const shopIcon = L.divIcon({
+          className: 'custom-shop-marker',
+          html: `<div style="background: #111111; color: #F2D675; padding: 4px 8px; border-radius: 12px; font-weight: 800; font-size: 11px; border: 2px solid #D4AF37; box-shadow: 0 4px 12px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 4px;">🏪 ${m.name}</div>`,
+          iconSize: [100, 30]
+        });
+
+        const marker = L.marker([lat, lng], { icon: shopIcon }).addTo(map);
+
+        const popupContent = `
+          <div style="font-family: system-ui, 'Noto Sans Devanagari', sans-serif; max-width: 200px; color: #050505;">
+            <h4 style="margin: 0 0 4px 0; color: #050505; font-size: 14px; font-weight: 800;">${m.name}</h4>
+            <p style="margin: 0 0 6px 0; color: #475569; font-size: 11px;">${translateCategory(m.category)} • ${m.distance_km || 0.8} ${t('kmAway')}</p>
+            <span style="background: #111111; color: #F2D675; padding: 3px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; display: inline-block; margin-bottom: 8px;">${t('mapGoldPartnerBadge')}</span>
+          </div>
+        `;
+
+        marker.bindPopup(popupContent);
+        marker.on('click', () => {
+          if (onSelectMerchant) onSelectMerchant(m);
+        });
+
+        markersRef.current.push(marker);
+      });
+    };
+
+    const syncMarkers = () => {
+      const L = window.L;
+      const map = leafletInstance.current;
+      if (!L || !map) return;
+
+      if (userMarkerRef.current) {
+        userMarkerRef.current.setLatLng([userLat, userLng]);
+        userMarkerRef.current.setPopupContent(`<b style="color: #050505;">📍 ${t('mapYourLocationPopup')}</b>`);
       }
 
-      if (!document.getElementById('leaflet-js')) {
-        const script = document.createElement('script');
-        script.id = 'leaflet-js';
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.onload = () => initMap();
-        document.body.appendChild(script);
+      if (isPinDropMode) {
+        if (pinMarkerRef.current) {
+          pinMarkerRef.current.setPopupContent(t('mapDragPinPopup'));
+        }
+      } else {
+        renderMerchantMarkers(L, map);
       }
     };
 
     const initMap = () => {
-      if (!mapRef.current || leafletInstance.current) return;
+      if (!mapRef.current) return;
+      if (leafletInstance.current) {
+        syncMarkers();
+        return;
+      }
 
       const L = window.L;
       const map = L.map(mapRef.current).setView([userLat, userLng], 13);
@@ -56,13 +101,14 @@ export default function MerchantMap({
         iconSize: [24, 24]
       });
 
-      L.marker([userLat, userLng], { icon: userIcon })
+      userMarkerRef.current = L.marker([userLat, userLng], { icon: userIcon })
         .addTo(map)
-        .bindPopup('<b style="color: #050505;">📍 Your Current Location</b>');
+        .bindPopup(`<b style="color: #050505;">📍 ${t('mapYourLocationPopup')}</b>`);
 
       if (isPinDropMode) {
-        let pinMarker = L.marker([userLat, userLng], { draggable: true }).addTo(map);
-        pinMarker.bindPopup('Drag pin to set exact shop location').openPopup();
+        const pinMarker = L.marker([userLat, userLng], { draggable: true }).addTo(map);
+        pinMarker.bindPopup(t('mapDragPinPopup')).openPopup();
+        pinMarkerRef.current = pinMarker;
 
         pinMarker.on('dragend', (e) => {
           const coord = e.target.getLatLng();
@@ -82,41 +128,16 @@ export default function MerchantMap({
       }
     };
 
-    const renderMerchantMarkers = (L, map) => {
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
-
-      merchants.forEach(m => {
-        const lat = m.latitude || 18.5204;
-        const lng = m.longitude || 73.8567;
-
-        const shopIcon = L.divIcon({
-          className: 'custom-shop-marker',
-          html: `<div style="background: #111111; color: #F2D675; padding: 4px 8px; border-radius: 12px; font-weight: 800; font-size: 11px; border: 2px solid #D4AF37; box-shadow: 0 4px 12px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 4px;">🏪 ${m.name}</div>`,
-          iconSize: [100, 30]
-        });
-
-        const marker = L.marker([lat, lng], { icon: shopIcon }).addTo(map);
-
-        const popupContent = `
-          <div style="font-family: system-ui; max-width: 200px; color: #050505;">
-            <h4 style="margin: 0 0 4px 0; color: #050505; font-size: 14px; font-weight: 800;">${m.name}</h4>
-            <p style="margin: 0 0 6px 0; color: #475569; font-size: 11px;">${m.category} • ${m.distance_km || 0.8} km away</p>
-            <span style="background: #111111; color: #F2D675; padding: 3px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; display: inline-block; margin-bottom: 8px;">Gold Reward Partner</span>
-          </div>
-        `;
-
-        marker.bindPopup(popupContent);
-        marker.on('click', () => {
-          if (onSelectMerchant) onSelectMerchant(m);
-        });
-
-        markersRef.current.push(marker);
-      });
-    };
-
-    loadLeaflet();
-  }, [userLat, userLng, merchants, isPinDropMode]);
+    if (window.L) {
+      initMap();
+    } else if (!document.getElementById('leaflet-js')) {
+      const script = document.createElement('script');
+      script.id = 'leaflet-js';
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = () => initMap();
+      document.body.appendChild(script);
+    }
+  }, [userLat, userLng, merchants, isPinDropMode, lang, t, translateCategory]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(212, 175, 55, 0.25)' }}>

@@ -332,13 +332,17 @@ async function run() {
     '15. First password login reports must_change_password = 1');
   const madeToken = firstLogin.token;
 
-  // 16. The OTP (mobile) login path respects the same flag.
-  const otpLogin = await request(
+  // 16. Removed OTP (mobile) login returns 410 Gone, while mobile + password via /shop/login respects must_change_password = 1.
+  const removedOtpLogin = await request(
     { ...H, path: '/api/auth/shop/login-mobile', method: 'POST', headers: jsonHeaders },
     { mobile: made.mobileNumber, otp_code: '123456' }
   );
-  expect(otpLogin.status === 200 && otpLogin.body.user.must_change_password === 1,
-    '16. OTP login path also reports must_change_password = 1');
+  expect(removedOtpLogin.status === 410,
+    '16a. Removed /api/auth/shop/login-mobile returns 410 Gone');
+
+  const mobilePwLogin = await login('/api/auth/shop/login', { email: made.mobileNumber, password: madeTempPw });
+  expect(mobilePwLogin.user.must_change_password === 1,
+    '16b. Mobile + password login via /api/auth/shop/login reports must_change_password = 1');
 
   // 17. Changing the password clears the flag; identity comes from the JWT only.
   const weakChange = await request(

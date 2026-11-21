@@ -1,26 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/I18nContext';
+import { parseApiResponse, resolveApiErrorMessage, resolveNetworkErrorMessage } from '../utils/api';
 import { QRCodeSVG } from 'qrcode.react';
-import { History, CheckCircle2, Clock, XCircle, QrCode } from 'lucide-react';
+import { History, CheckCircle2, Clock, XCircle, QrCode, AlertCircle } from 'lucide-react';
 
 export default function CustomerHistory() {
   const { token } = useAuth();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [redemptions, setRedemptions] = useState([]);
   const [selectedQR, setSelectedQR] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    fetch('/api/customer/redemptions', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) setRedemptions(data.redemptions || []);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    if (!token) return;
+    let active = true;
+
+    const loadHistory = async () => {
+      setErrorMsg('');
+      try {
+        const res = await fetch('/api/customer/redemptions', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const parsed = await parseApiResponse(res);
+        if (!active) return;
+
+        const data = parsed.data;
+        if (parsed.ok && data && data.success) {
+          setRedemptions(data.redemptions || []);
+        } else {
+          setErrorMsg(resolveApiErrorMessage(parsed, t, 'redemptionHistoryLoadFailed'));
+        }
+      } catch (err) {
+        if (active) {
+          setErrorMsg(resolveNetworkErrorMessage(err, t, 'redemptionHistoryLoadFailed'));
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadHistory();
+    return () => { active = false; };
   }, [token]);
 
   const getStatusBadge = (status) => {
@@ -44,6 +66,27 @@ export default function CustomerHistory() {
       <p style={{ fontSize: '13px', color: '#B8B8B8', marginBottom: '16px' }}>
         {t('redemptionHistorySubtitle')}
       </p>
+
+      {errorMsg && (
+        <div
+          role="alert"
+          style={{
+            background: 'rgba(239, 68, 68, 0.14)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            color: '#fca5a5',
+            fontSize: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '16px'
+          }}
+        >
+          <AlertCircle size={16} style={{ flexShrink: 0 }} aria-hidden="true" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
 
       {redemptions.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: '#B8B8B8' }}>
@@ -76,11 +119,11 @@ export default function CustomerHistory() {
                 </div>
 
                 <h4 style={{ fontSize: '15px', color: '#FFFFFF', fontWeight: 700 }}>
-                  {item.discount_percent}% OFF — {item.shop_name}
+                  {item.discount_percent}% {t('offUpper')} — {item.shop_name}
                 </h4>
 
                 <span style={{ fontSize: '12px', color: '#B8B8B8', display: 'block', marginTop: '2px' }}>
-                  {new Date(item.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} • {t('deductedCoins')}: {item.points_deducted} Coins
+                  {new Date(item.created_at).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })} • {t('deductedCoins')}: {item.points_deducted} {t('coinsUnit')}
                 </span>
               </div>
 
@@ -94,7 +137,7 @@ export default function CustomerHistory() {
                 </button>
               ) : (
                 <span style={{ fontSize: '12px', fontWeight: 700, color: '#777777' }}>
-                  {item.status}
+                  {item.status === 'USED' ? t('statusUsed') : item.status === 'EXPIRED' ? t('statusExpired') : item.status}
                 </span>
               )}
             </div>
@@ -111,7 +154,7 @@ export default function CustomerHistory() {
           <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '24px', maxWidth: '380px', width: '100%', padding: '24px', textAlign: 'center' }}>
             <h3 style={{ fontSize: '18px', color: '#FFFFFF', marginBottom: '4px' }}>{selectedQR.shop_name}</h3>
             <span style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675', display: 'block', marginBottom: '12px' }}>
-              {selectedQR.discount_percent}% OFF DISCOUNT
+              {selectedQR.discount_percent}% {t('offUpper')} {t('discountUpperLabel')}
             </span>
 
             <div style={{ background: '#FFFFFF', padding: '18px', borderRadius: '20px', display: 'inline-block', marginBottom: '16px' }}>
@@ -122,7 +165,7 @@ export default function CustomerHistory() {
             </div>
 
             <div style={{ fontSize: '14px', fontWeight: 800, letterSpacing: '0.05em', color: '#FFFFFF', marginBottom: '16px' }}>
-              Code: {selectedQR.redemption_code}
+              {t('codeLabel')} {selectedQR.redemption_code}
             </div>
 
             <button onClick={() => setSelectedQR(null)} className="btn-secondary" style={{ width: '100%', padding: '12px' }}>

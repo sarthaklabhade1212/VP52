@@ -1,19 +1,137 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/I18nContext';
+import { parseApiResponse, resolveApiErrorMessage, resolveMediaUrl, resolveNetworkErrorMessage } from '../utils/api';
+import {
+  compressImageToDataUrl,
+  validateImageFile,
+  IMAGE_UPLOAD_PRESETS,
+  ImageCompressionError
+} from '../utils/imageCompression';
 import { QRCodeSVG } from 'qrcode.react';
-import { Award, Phone, Mail, CheckCircle2, RefreshCw, Lock, LogOut, Trash2, Shield, AlertTriangle } from 'lucide-react';
+import { Award, Phone, Mail, CheckCircle2, RefreshCw, Lock, LogOut, Trash2, Shield, AlertTriangle, Camera, Upload, Check } from 'lucide-react';
 
 export default function CustomerProfile() {
   const navigate = useNavigate();
-  const { user, token, logout } = useAuth();
-  const { t } = useI18n();
+  const { user, token, logout, updateUserPhoto } = useAuth();
+  const { t, locale } = useI18n();
   const [qrToken, setQrToken] = useState(null);
   const [loadingQr, setLoadingQr] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+
+  // Profile photo states
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const [photoSuccess, setPhotoSuccess] = useState('');
+  const [avatarError, setAvatarError] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [user?.profile_photo]);
+
+  const handlePhotoSelect = async (e) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const validation = validateImageFile(file, {
+      maxInputBytes: IMAGE_UPLOAD_PRESETS.PROFILE_AVATAR.maxInputBytes
+    });
+    if (!validation.valid) {
+      if (validation.reason === 'INVALID_TYPE') {
+        setPhotoError(t('photoTypeError'));
+      } else if (validation.reason === 'FILE_TOO_LARGE') {
+        setPhotoError(t('apiErrorPayloadTooLarge'));
+      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setUploadingPhoto(true);
+    setPhotoError('');
+    setPhotoSuccess('');
+
+    try {
+      const { dataUrl } = await compressImageToDataUrl(file, IMAGE_UPLOAD_PRESETS.PROFILE_AVATAR);
+
+      // 1. Upload compressed image to storage
+      const upRes = await fetch('/api/upload/image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ image: dataUrl, type: 'customer_profile' })
+      });
+      const upParsed = await parseApiResponse(upRes);
+      const upData = upParsed.data;
+      if (!upParsed.ok || !upData || !upData.success || !upData.url) {
+        throw new Error(resolveApiErrorMessage(upParsed, t, 'photoUploadFailed'));
+      }
+
+      // 2. Associate photo with customer account
+      const photoRes = await fetch('/api/customer/photo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ photo_url: upData.url })
+      });
+      const photoParsed = await parseApiResponse(photoRes);
+      const photoData = photoParsed.data;
+      if (!photoParsed.ok || !photoData || !photoData.success) {
+        throw new Error(resolveApiErrorMessage(photoParsed, t, 'photoUpdateFailed'));
+      }
+
+      updateUserPhoto(upData.url);
+      setAvatarError(false);
+      setPhotoSuccess(t('photoUpdateSuccess'));
+    } catch (err) {
+      console.error('Profile photo upload error:', err);
+      if (err instanceof ImageCompressionError) {
+        setPhotoError(
+          err.code === 'COMPRESSED_TOO_LARGE'
+            ? t('apiErrorPayloadTooLarge')
+            : t('photoCompressionFailed')
+        );
+      } else {
+        setPhotoError(resolveNetworkErrorMessage(err, t, 'photoUpdateFailed'));
+      }
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    setUploadingPhoto(true);
+    setPhotoError('');
+    setPhotoSuccess('');
+    try {
+      const res = await fetch('/api/customer/photo', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success) {
+        updateUserPhoto(null);
+        setAvatarError(false);
+        setPhotoSuccess(t('photoRemovedSuccess'));
+      } else {
+        setPhotoError(resolveApiErrorMessage(parsed, t, 'photoRemoveFailed'));
+      }
+    } catch (err) {
+      setPhotoError(resolveNetworkErrorMessage(err, t, 'photoRemoveNetError'));
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const fetchQrToken = (rotate = false) => {
     setLoadingQr(true);
@@ -25,9 +143,10 @@ export default function CustomerProfile() {
       },
       body: JSON.stringify({ rotate })
     })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
+      .then(res => parseApiResponse(res))
+      .then(parsed => {
+        const data = parsed.data;
+        if (parsed.ok && data && data.success) {
           setQrToken(data.qrToken);
         }
       })
@@ -55,18 +174,19 @@ export default function CustomerProfile() {
           'Authorization': `Bearer ${token}`
         }
       });
-      const data = await res.json();
-      if (data.success) {
-        alert(data.message || 'Account deleted successfully.');
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success) {
+        alert(data.message || t('accountDeletedAlert'));
         logout();
         navigate('/customer/login');
       } else {
-        setDeleteError(data.error || 'Failed to delete account.');
+        setDeleteError(resolveApiErrorMessage(parsed, t, 'accountDeleteFailed'));
         setDeleting(false);
       }
     } catch (err) {
       console.error(err);
-      setDeleteError('Network error while deleting account.');
+      setDeleteError(resolveNetworkErrorMessage(err, t, 'accountDeleteNetError'));
       setDeleting(false);
     }
   };
@@ -81,31 +201,142 @@ export default function CustomerProfile() {
       <div style={{
         background: '#111111',
         borderRadius: '20px',
-        padding: '20px',
+        padding: '24px 20px',
         border: '1px solid rgba(212, 175, 55, 0.25)',
         textAlign: 'center',
         marginBottom: '20px',
         boxShadow: '0 8px 30px rgba(0,0,0,0.35)'
       }}>
-        <div style={{
-          width: '72px',
-          height: '72px',
-          borderRadius: '50%',
-          background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#050505',
-          fontWeight: 800,
-          fontSize: '28px',
-          marginBottom: '12px',
-          boxShadow: '0 8px 20px rgba(212, 175, 55, 0.3)'
-        }}>
-          {user && user.full_name ? user.full_name.charAt(0).toUpperCase() : 'C'}
+        {/* Hidden File Input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/jpeg,image/png,image/webp"
+          style={{ display: 'none' }}
+          onChange={handlePhotoSelect}
+        />
+
+        {/* Circular Avatar with Camera Overlay */}
+        <div style={{ position: 'relative', display: 'inline-block', marginBottom: '14px' }}>
+          {user?.profile_photo && !avatarError ? (
+            <img
+              src={resolveMediaUrl(user.profile_photo)}
+              alt={user.full_name || t('customerLabel')}
+              onError={() => setAvatarError(true)}
+              style={{
+                width: '80px',
+                height: '80px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid #D4AF37',
+                boxShadow: '0 8px 24px rgba(212, 175, 55, 0.35)',
+                display: 'block'
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '80px',
+              height: '80px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#050505',
+              fontWeight: 800,
+              fontSize: '32px',
+              border: '2px solid #D4AF37',
+              boxShadow: '0 8px 24px rgba(212, 175, 55, 0.35)'
+            }}>
+              {user && user.full_name ? user.full_name.charAt(0).toUpperCase() : 'C'}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingPhoto}
+            title={t('changeProfilePhotoAria')}
+            aria-label={t('changeProfilePhotoAria')}
+            style={{
+              position: 'absolute',
+              bottom: '0',
+              right: '0',
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              background: '#D4AF37',
+              border: '2px solid #111111',
+              color: '#050505',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: uploadingPhoto ? 'wait' : 'pointer',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.5)'
+            }}
+          >
+            <Camera size={14} color="#050505" />
+          </button>
         </div>
 
+        {/* Change / Remove Photo Buttons */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '14px' }}>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingPhoto}
+            style={{
+              background: 'rgba(212, 175, 55, 0.12)',
+              border: '1px solid rgba(212, 175, 55, 0.3)',
+              color: '#F2D675',
+              padding: '6px 12px',
+              borderRadius: '99px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: uploadingPhoto ? 'wait' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <Upload size={12} color="#F2D675" />
+            {uploadingPhoto ? t('uploadingPhoto') : (user?.profile_photo ? t('changePhotoBtn') : t('uploadPhotoBtn'))}
+          </button>
+
+          {user?.profile_photo && (
+            <button
+              type="button"
+              onClick={handleRemovePhoto}
+              disabled={uploadingPhoto}
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#ef4444',
+                padding: '6px 10px',
+                borderRadius: '99px',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              {t('removeBtn')}
+            </button>
+          )}
+        </div>
+
+        {photoSuccess && (
+          <div style={{ fontSize: '11px', color: '#10b981', marginBottom: '10px', fontWeight: 600 }}>
+            ✓ {photoSuccess}
+          </div>
+        )}
+        {photoError && (
+          <div style={{ fontSize: '11px', color: '#ef4444', marginBottom: '10px', fontWeight: 600 }}>
+            ⚠️ {photoError}
+          </div>
+        )}
+
         <h3 style={{ fontSize: '18px', color: '#FFFFFF', marginBottom: '2px', fontWeight: 800 }}>
-          {user ? user.full_name : 'Customer'}
+          {user ? user.full_name : t('customerLabel')}
         </h3>
         <p style={{ fontSize: '13px', color: '#B8B8B8', marginBottom: '12px' }}>
           {user ? user.email : 'customer@example.com'}
@@ -139,7 +370,7 @@ export default function CustomerProfile() {
           ) : qrToken ? (
             <QRCodeSVG value={qrToken} size={160} />
           ) : (
-            <div style={{ color: '#ef4444', fontSize: '12px' }}>Failed to load QR token</div>
+            <div style={{ color: '#ef4444', fontSize: '12px' }}>{t('failedLoadQrToken')}</div>
           )}
         </div>
 
@@ -183,7 +414,7 @@ export default function CustomerProfile() {
           <div>
             <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>{t('availableCoinsBalance')}</span>
             <span style={{ fontSize: '14px', fontWeight: 800, color: '#F2D675' }}>
-              🪙 {(user ? user.available_coins || user.balance || 0 : 0).toLocaleString()} Coins
+              🪙 {(user ? user.available_coins || user.balance || 0 : 0).toLocaleString(locale)} {t('coinsUnit')}
             </span>
           </div>
         </div>

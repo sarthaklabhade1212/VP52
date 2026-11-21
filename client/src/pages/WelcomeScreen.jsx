@@ -103,7 +103,7 @@ export default function WelcomeScreen() {
             margin: '0 0 12px 0',
             textAlign: 'center',
             letterSpacing: '0.3px',
-            fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+            fontFamily: "'Outfit', 'Noto Sans Devanagari', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
           }}
         >
           {t('welcomeTitle')}
@@ -146,7 +146,7 @@ export default function WelcomeScreen() {
               justifyContent: 'center',
               transition: 'transform 0.15s ease, filter 0.15s ease',
               outline: 'none',
-              fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+              fontFamily: "'Outfit', 'Noto Sans Devanagari', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
             }}
           >
             {t('getStarted')}

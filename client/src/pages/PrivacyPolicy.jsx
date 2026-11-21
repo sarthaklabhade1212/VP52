@@ -2,9 +2,11 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, ArrowLeft, Mail, Trash2, CheckCircle2, Lock } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import { useI18n } from '../i18n/I18nContext';
 import vp52Logo from '../assets/vp52-logo.png';
 
 export default function PrivacyPolicy() {
+  const { t } = useI18n();
   return (
     <div style={{ minHeight: '100vh', background: '#050505', color: '#E0E0E0', padding: '24px 16px' }}>
       <div style={{ maxWidth: '760px', margin: '0 auto' }}>
@@ -22,7 +24,7 @@ export default function PrivacyPolicy() {
               fontWeight: 700
             }}
           >
-            <ArrowLeft size={16} /> Home
+            <ArrowLeft size={16} /> {t('navHome')}
           </Link>
           <LanguageSwitcher tone="dark" compact={true} />
         </div>
@@ -41,10 +43,10 @@ export default function PrivacyPolicy() {
             }}
           />
           <h1 style={{ fontSize: '28px', color: '#FFFFFF', fontWeight: 800, margin: '0 0 8px 0' }}>
-            VP52 Privacy Policy
+            {t('privacyPolicyTitle')}
           </h1>
           <p style={{ fontSize: '14px', color: '#A0A0A0', margin: 0 }}>
-            Last Updated: October 2026 • Effective Date: October 2026
+            {t('privacyLastUpdated')}
           </p>
         </div>
 
@@ -57,40 +59,40 @@ export default function PrivacyPolicy() {
           marginBottom: '28px'
         }}>
           <h2 style={{ fontSize: '18px', color: '#F2D675', fontWeight: 700, margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Shield size={20} color="#D4AF37" /> Application Operator & Scope
+            <Shield size={20} color="#D4AF37" /> {t('privacyOperatorHeading')}
           </h2>
           <p style={{ fontSize: '14px', lineHeight: '1.6', margin: 0, color: '#CCCCCC' }}>
-            <strong>VP52</strong> is developed and operated by <strong>Sanket Shinde</strong>, an individual independent software developer. This privacy policy transparently describes how VP52 collects, uses, protects, and deletes personal information when you use our mobile application and web services.
+            {t('privacyOperatorBody')}
           </p>
           <div style={{ marginTop: '12px', fontSize: '13px', color: '#D4AF37' }}>
-            Contact Email: <a href="mailto:shindesanket.vp52@gmail.com" style={{ color: '#F2D675', textDecoration: 'underline' }}>shindesanket.vp52@gmail.com</a>
+            {t('privacyContactEmail')} <a href="mailto:shindesanket.vp52@gmail.com" style={{ color: '#F2D675', textDecoration: 'underline' }}>shindesanket.vp52@gmail.com</a>
           </div>
         </div>
 
         {/* Section 1: Data We Collect */}
         <div style={{ marginBottom: '28px' }}>
           <h2 style={{ fontSize: '20px', color: '#FFFFFF', fontWeight: 700, marginBottom: '12px' }}>
-            1. Information We Collect
+            {t('privacySec1Heading')}
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ background: '#111111', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <strong style={{ color: '#F2D675', fontSize: '15px' }}>Account & Profile Information:</strong>
+              <strong style={{ color: '#F2D675', fontSize: '15px' }}>{t('privacyAccountInfoTitle')}</strong>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', lineHeight: '1.5', color: '#B8B8B8' }}>
-                When you create an account or sign in with Google, we collect your full name, email address, phone number, and authentication tokens to securely identify your reward wallet and account.
+                {t('privacyAccountInfoBody')}
               </p>
             </div>
 
             <div style={{ background: '#111111', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <strong style={{ color: '#F2D675', fontSize: '15px' }}>Location Data (Foreground Only):</strong>
+              <strong style={{ color: '#F2D675', fontSize: '15px' }}>{t('privacyLocationInfoTitle')}</strong>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', lineHeight: '1.5', color: '#B8B8B8' }}>
-                With your explicit permission, we access your device GPS coordinates while using the app to calculate physical distances to nearby partner stores and show local discounts. We do NOT track location in the background, nor do we share your location history with third-party data brokers.
+                {t('privacyLocationInfoBody')}
               </p>
             </div>
 
             <div style={{ background: '#111111', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
-              <strong style={{ color: '#F2D675', fontSize: '15px' }}>Reward & Activity Records:</strong>
+              <strong style={{ color: '#F2D675', fontSize: '15px' }}>{t('privacyRewardInfoTitle')}</strong>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', lineHeight: '1.5', color: '#B8B8B8' }}>
-                We record ad watch sessions, coin earnings across the 12 reward tiers, voucher generation, and merchant redemptions to maintain your authoritative ledger and prevent fraudulent reward claims.
+                {t('privacyRewardInfoBody')}
               </p>
             </div>
           </div>
@@ -99,28 +101,28 @@ export default function PrivacyPolicy() {
         {/* Section 2: How Data is Used */}
         <div style={{ marginBottom: '28px' }}>
           <h2 style={{ fontSize: '20px', color: '#FFFFFF', fontWeight: 700, marginBottom: '12px' }}>
-            2. How We Use Your Information
+            {t('privacySec2Heading')}
           </h2>
           <ul style={{ paddingLeft: '20px', fontSize: '14px', lineHeight: '1.7', color: '#B8B8B8' }}>
-            <li>To operate and maintain your customer loyalty points, coin tiers, and balance.</li>
-            <li>To verify identity when redeeming discount vouchers with merchant QR codes.</li>
-            <li>To show relevant nearby partner shops, menus, and discount offers.</li>
-            <li>To protect against fraud, duplicate redemptions, and system abuse.</li>
-            <li>To provide customer support and troubleshoot account issues.</li>
+            <li>{t('privacySec2Bullet1')}</li>
+            <li>{t('privacySec2Bullet2')}</li>
+            <li>{t('privacySec2Bullet3')}</li>
+            <li>{t('privacySec2Bullet4')}</li>
+            <li>{t('privacySec2Bullet5')}</li>
           </ul>
         </div>
 
         {/* Section 3: Data Sharing & Third Parties */}
         <div style={{ marginBottom: '28px' }}>
           <h2 style={{ fontSize: '20px', color: '#FFFFFF', fontWeight: 700, marginBottom: '12px' }}>
-            3. Third-Party Services & Data Sharing
+            {t('privacySec3Heading')}
           </h2>
           <p style={{ fontSize: '14px', lineHeight: '1.6', color: '#B8B8B8' }}>
-            We do NOT sell or monetize your personal information to third parties. We only share limited data with necessary infrastructure providers:
+            {t('privacySec3Intro')}
           </p>
           <ul style={{ paddingLeft: '20px', fontSize: '14px', lineHeight: '1.7', color: '#B8B8B8' }}>
-            <li><strong>Google Identity Services:</strong> To facilitate secure, one-tap mobile and web authentication if you choose Google Sign-In.</li>
-            <li><strong>Partner Merchants:</strong> Only during checkout verification when you present a QR code. Merchants only receive your verification status and applicable discount percentage.</li>
+            <li><strong>{t('privacySec3GoogleTitle')}</strong> {t('privacySec3GoogleBody')}</li>
+            <li><strong>{t('privacySec3MerchantTitle')}</strong> {t('privacySec3MerchantBody')}</li>
           </ul>
         </div>
 
@@ -133,17 +135,17 @@ export default function PrivacyPolicy() {
           marginBottom: '28px'
         }}>
           <h2 style={{ fontSize: '18px', color: '#f87171', fontWeight: 700, margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Trash2 size={20} color="#f87171" /> 4. Data Deletion & Your Rights (Google Play Compliance)
+            <Trash2 size={20} color="#f87171" /> {t('privacySec4Heading')}
           </h2>
           <p style={{ fontSize: '14px', lineHeight: '1.6', color: '#E0E0E0', marginBottom: '12px' }}>
-            You have full ownership of your personal data. You can delete your account and all associated personal data at any time:
+            {t('privacySec4Intro')}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#CCCCCC' }}>
             <div>
-              <strong>1. In-App Immediate Deletion:</strong> Go to <em>Profile → Delete Account</em>. Confirming will permanently and immediately delete your account, balances, active batches, and profile.
+              <strong>{t('privacySec4Opt1Title')}</strong> {t('privacySec4Opt1Body')}
             </div>
             <div>
-              <strong>2. Web Deletion Request (Without App):</strong> If you have uninstalled the app or cannot log in, visit our dedicated public deletion page. Web deletion requests are placed in an administrative queue for manual identity verification and processing by the operator.
+              <strong>{t('privacySec4Opt2Title')}</strong> {t('privacySec4Opt2Body')}
             </div>
           </div>
 
@@ -163,21 +165,21 @@ export default function PrivacyPolicy() {
                 fontSize: '13px'
               }}
             >
-              <Trash2 size={16} /> Request Account Deletion Online
+              <Trash2 size={16} /> {t('privacyRequestDeleteBtn')}
             </Link>
           </div>
           <p style={{ fontSize: '12px', color: '#888888', marginTop: '12px', margin: '12px 0 0 0' }}>
-            * Note: Account deletion permanently purges customer identity, profile data, coin wallet balances, and reward vouchers. Merchant aggregate sales metrics remain intact while personal references are removed.
+            {t('privacySec4Footnote')}
           </p>
         </div>
 
         {/* Section 5: Security */}
         <div style={{ marginBottom: '28px' }}>
           <h2 style={{ fontSize: '20px', color: '#FFFFFF', fontWeight: 700, marginBottom: '12px' }}>
-            5. Data Security
+            {t('privacySec5Heading')}
           </h2>
           <p style={{ fontSize: '14px', lineHeight: '1.6', color: '#B8B8B8' }}>
-            We implement strict security measures including bcrypt salted password hashing, signed JSON Web Tokens (JWT), HTTPS/TLS encrypted network communication, and cryptographically hashed QR tokens to safeguard your account against unauthorized access.
+            {t('privacySec5Body')}
           </p>
         </div>
 
@@ -190,16 +192,16 @@ export default function PrivacyPolicy() {
           textAlign: 'center'
         }}>
           <h2 style={{ fontSize: '18px', color: '#FFFFFF', fontWeight: 700, marginBottom: '6px' }}>
-            Questions or Privacy Requests?
+            {t('privacyQuestionsTitle')}
           </h2>
           <p style={{ fontSize: '13px', color: '#B8B8B8', marginBottom: '14px' }}>
-            For questions about this policy or to exercise your privacy rights, contact the developer directly:
+            {t('privacyQuestionsSub')}
           </p>
           <div style={{ fontSize: '14px', fontWeight: 700, color: '#F2D675' }}>
-            Sanket Shinde (VP52 Developer)
+            {t('privacyDevCredit')}
           </div>
           <div style={{ fontSize: '13px', color: '#A0A0A0', marginTop: '4px' }}>
-            Email: <a href="mailto:shindesanket.vp52@gmail.com" style={{ color: '#D4AF37' }}>shindesanket.vp52@gmail.com</a>
+            {t('emailAddress')}: <a href="mailto:shindesanket.vp52@gmail.com" style={{ color: '#D4AF37' }}>shindesanket.vp52@gmail.com</a>
           </div>
         </div>
       </div>

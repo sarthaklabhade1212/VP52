@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MessageCircle, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
 import { useI18n } from '../i18n/I18nContext';
-import { apiFetch } from '../utils/api';
+import { apiFetch, parseApiResponse, resolveMediaUrl } from '../utils/api';
 
 const LIST_POLL_MS = 10000;
 
@@ -12,7 +12,7 @@ function preview(text) {
 }
 
 export default function CustomerMessages() {
-  const { t } = useI18n();
+  const { t, translateCategory } = useI18n();
   const navigate = useNavigate();
 
   const [conversations, setConversations] = useState([]);
@@ -26,9 +26,9 @@ export default function CustomerMessages() {
     }
     try {
       const res = await apiFetch('/api/customer/conversations');
-      if (!res.ok) { if (initial) setStatus('error'); return; }
-      const data = await res.json();
-      if (data && data.success) {
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success) {
         setConversations(Array.isArray(data.conversations) ? data.conversations : []);
         setStatus('ready');
       } else if (initial) {
@@ -93,7 +93,7 @@ export default function CustomerMessages() {
               }}
             >
               {c.shop_image_url ? (
-                <img src={c.shop_image_url} alt={c.shop_name} style={{ width: '48px', height: '48px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0 }} />
+                <img src={resolveMediaUrl(c.shop_image_url)} alt={c.shop_name} style={{ width: '48px', height: '48px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0 }} />
               ) : (
                 <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)', color: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, flexShrink: 0 }}>
                   {(c.shop_name || '?').charAt(0).toUpperCase()}
@@ -109,7 +109,7 @@ export default function CustomerMessages() {
                   )}
                 </div>
                 <span style={{ fontSize: '12px', color: c.unread_count > 0 ? '#F2D675' : '#B8B8B8', fontWeight: c.unread_count > 0 ? 700 : 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
-                  {preview(c.last_message_text) || c.shop_category}
+                  {preview(c.last_message_text) || translateCategory(c.shop_category)}
                 </span>
               </div>
               <ChevronRight size={18} color="#D4AF37" style={{ flexShrink: 0 }} />

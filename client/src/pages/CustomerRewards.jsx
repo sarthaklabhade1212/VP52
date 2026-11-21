@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../i18n/I18nContext';
+import { parseApiResponse, resolveApiErrorMessage, resolveMediaUrl, resolveNetworkErrorMessage } from '../utils/api';
+import { formatInr, formatNumber } from '../utils/formatters';
 import { Store, X, QrCode, CheckCircle2, ChevronRight } from 'lucide-react';
 
 const VP52_TIERS = [
@@ -12,7 +14,7 @@ const VP52_TIERS = [
 export default function CustomerRewards() {
   const navigate = useNavigate();
   const { user, token } = useAuth();
-  const { t } = useI18n();
+  const { t, locale, translateCategory } = useI18n();
 
   const [offers, setOffers] = useState([]);
   const [shops, setShops] = useState([]);
@@ -33,8 +35,9 @@ export default function CustomerRewards() {
       const res = await fetch('/api/customer/shops', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
-      if (data.success) {
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success) {
         setOffers(data.offers || []);
         setShops(data.shops || []);
       }
@@ -51,11 +54,15 @@ export default function CustomerRewards() {
         fetch('/api/customer/level', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/customer/wallet', { headers: { Authorization: `Bearer ${token}` } })
       ]);
-      const levelData = await levelRes.json();
-      const walletData = await walletRes.json();
+      const [levelParsed, walletParsed] = await Promise.all([
+        parseApiResponse(levelRes),
+        parseApiResponse(walletRes)
+      ]);
+      const levelData = levelParsed.data;
+      const walletData = walletParsed.data;
 
-      if (levelData.success) setLevelInfo(levelData);
-      if (walletData.success && walletData.wallet) {
+      if (levelParsed.ok && levelData && levelData.success) setLevelInfo(levelData);
+      if (walletParsed.ok && walletData && walletData.success && walletData.wallet) {
         setTierBreakdown(walletData.wallet.tier_breakdown || {});
       }
     } catch (err) {
@@ -99,15 +106,17 @@ export default function CustomerRewards() {
         })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to redeem offer');
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (!parsed.ok || !data || !data.success) {
+        setRedeemError(resolveApiErrorMessage(parsed, t, 'failedRedeemOffer'));
+        return;
       }
 
       setRedeemResult(data.redemption);
       fetchWalletAndLevel();
     } catch (err) {
-      setRedeemError(err.message);
+      setRedeemError(resolveNetworkErrorMessage(err, t, 'failedRedeemOffer'));
     } finally {
       setIsRedeeming(false);
     }
@@ -156,7 +165,7 @@ export default function CustomerRewards() {
             {t('yourMembershipTier')}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
-            <span style={{ fontSize: '16px', fontWeight: 800, color: '#F2D675' }}>🏆 {currentLevel} {t('memberBadge')}</span>
+            <span style={{ fontSize: '16px', fontWeight: 800, color: '#F2D675' }}>🏆 {t(`tier_${currentLevel}`) !== `tier_${currentLevel}` ? t(`tier_${currentLevel}`) : currentLevel} {t('memberBadge')}</span>
             <span style={{ fontSize: '12px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', padding: '2px 8px', borderRadius: '6px', color: '#D4AF37', fontWeight: 700 }}>
               {t('upToMaxCap', { cap: discountCapPercent })}
             </span>
@@ -168,7 +177,7 @@ export default function CustomerRewards() {
             {t('totalCoinBalance')}
           </span>
           <span style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675' }}>
-            🪙 {availableCoins.toLocaleString()}
+            🪙 {formatNumber(availableCoins, locale)} <span style={{ fontSize: '13px', fontWeight: 700, color: '#FFFFFF' }}>{t('coinsUnit')}</span>
           </span>
         </div>
       </div>
@@ -192,7 +201,7 @@ export default function CustomerRewards() {
               boxShadow: selectedCategory === cat ? '0 4px 12px rgba(212, 175, 55, 0.25)' : 'none'
             }}
           >
-            {cat === 'All' ? t('categoryAll') : cat}
+            {cat === 'All' ? t('categoryAll') : translateCategory(cat)}
           </button>
         ))}
       </div>
@@ -212,7 +221,7 @@ export default function CustomerRewards() {
           >
             <div style={{ position: 'relative', height: '130px' }}>
               <img
-                src={offer.shop_image}
+                src={resolveMediaUrl(offer.shop_image)}
                 alt={offer.shop_name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
@@ -234,12 +243,12 @@ export default function CustomerRewards() {
                 borderRadius: '99px',
                 boxShadow: '0 4px 12px rgba(212, 175, 55, 0.3)'
               }}>
-                {offer.discount_percent}% OFF
+                {offer.discount_percent}% {t('offUpper')}
               </div>
 
               <div style={{ position: 'absolute', bottom: '12px', left: '16px', color: '#FFFFFF' }}>
                 <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D4AF37', fontWeight: 800 }}>
-                  {offer.shop_category}
+                  {translateCategory(offer.shop_category)}
                 </span>
                 <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '2px 0 0 0', color: '#FFFFFF' }}>{offer.shop_name}</h3>
               </div>
@@ -251,9 +260,9 @@ export default function CustomerRewards() {
               </h4>
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '12px', color: '#B8B8B8', marginBottom: '14px' }}>
-                <span>{t('maxDiscountLabel')}: <strong style={{ color: '#F2D675' }}>₹{offer.max_discount_inr}</strong></span>
+                <span>{t('maxDiscountLabel')}: <strong style={{ color: '#F2D675' }}>{formatInr(offer.max_discount_inr, locale)}</strong></span>
                 <span>•</span>
-                <span>{t('validUntilLabel')}: <strong>{new Date(offer.valid_until).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
+                <span>{t('validUntilLabel')}: <strong>{new Date(offer.valid_until).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })}</strong></span>
               </div>
 
               <div style={{
@@ -266,7 +275,7 @@ export default function CustomerRewards() {
                 <div>
                   <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block', fontWeight: 700 }}>{t('availableCoins')}</span>
                   <span style={{ fontSize: '15px', fontWeight: 800, color: '#F2D675' }}>
-                    🪙 {availableCoins.toLocaleString()} Coins
+                    🪙 {availableCoins.toLocaleString(locale)} {t('coinsUnit')}
                   </span>
                 </div>
 
@@ -296,19 +305,19 @@ export default function CustomerRewards() {
                 <Store size={20} color="#D4AF37" />
                 <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>{selectedOffer.shop_name}</h3>
               </div>
-              <button type="button" onClick={() => { setSelectedOffer(null); setRedeemResult(null); }} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
+              <button type="button" aria-label={t('closeModalAria')} onClick={() => { setSelectedOffer(null); setRedeemResult(null); }} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
                 <X size={20} color="#B8B8B8" />
               </button>
             </div>
 
             {/* Offer Header Card */}
             <div style={{ background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', borderRadius: '16px', padding: '16px', marginBottom: '16px' }}>
-              <span style={{ fontSize: '11px', color: '#D4AF37', fontWeight: 800, textTransform: 'uppercase' }}>{selectedOffer.shop_category}</span>
+              <span style={{ fontSize: '11px', color: '#D4AF37', fontWeight: 800, textTransform: 'uppercase' }}>{translateCategory(selectedOffer.shop_category)}</span>
               <h4 style={{ fontSize: '17px', fontWeight: 800, color: '#F2D675', margin: '4px 0' }}>
                 {selectedOffer.title}
               </h4>
               <span style={{ fontSize: '13px', color: '#FFFFFF', fontWeight: 700 }}>
-                {t('maxDiscountLabel')}: ₹{selectedOffer.max_discount_inr} • {t('validUntilLabel')} {new Date(selectedOffer.valid_until).toLocaleDateString()}
+                {t('maxDiscountLabel')}: {formatInr(selectedOffer.max_discount_inr, locale)} • {t('validUntilLabel')} {new Date(selectedOffer.valid_until).toLocaleDateString(locale)}
               </span>
             </div>
 
@@ -324,7 +333,7 @@ export default function CustomerRewards() {
                   {redeemResult.redemption_code}
                 </div>
                 <div style={{ fontSize: '12px', color: '#FFFFFF', fontWeight: 700 }}>
-                  Tier: <span style={{ color: '#F2D675' }}>{redeemResult.coin_tier}</span> • Discount: <span style={{ color: '#F2D675' }}>{redeemResult.discount_percent}% OFF</span>
+                  {t('tierAndDiscountSummary', { tier: t(`tier_${redeemResult.coin_tier}`) !== `tier_${redeemResult.coin_tier}` ? t(`tier_${redeemResult.coin_tier}`) : redeemResult.coin_tier, percent: redeemResult.discount_percent })}
                 </div>
               </div>
             ) : (
@@ -339,6 +348,7 @@ export default function CustomerRewards() {
                       const tierCoins = tierBreakdown[tierName] ? tierBreakdown[tierName].coins : 0;
                       const disc = getOfferDiscountForTier(selectedOffer, tierName);
                       const isSelected = selectedTier === tierName;
+                      const tierDisplay = t(`tier_${tierName}`) !== `tier_${tierName}` ? t(`tier_${tierName}`) : tierName;
 
                       return (
                         <button
@@ -355,7 +365,7 @@ export default function CustomerRewards() {
                           }}
                         >
                           <div style={{ fontSize: '12px', fontWeight: 800, color: isSelected ? '#F2D675' : '#FFFFFF' }}>
-                            🪙 {tierName} ({tierCoins})
+                            🪙 {tierDisplay} ({tierCoins})
                           </div>
                           <div style={{ fontSize: '11px', color: '#B8B8B8', marginTop: '2px' }}>
                             {disc}% {t('tierDiscountBadge')}
@@ -370,15 +380,15 @@ export default function CustomerRewards() {
                 <div style={{ background: '#151515', border: '1px solid rgba(212, 175, 55, 0.15)', borderRadius: '16px', padding: '16px', marginBottom: '20px', fontSize: '13px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                     <span style={{ color: '#B8B8B8' }}>{t('selectedCoinTier')}</span>
-                    <span style={{ fontWeight: 800, color: '#F2D675' }}>🪙 {selectedTier}</span>
+                    <span style={{ fontWeight: 800, color: '#F2D675' }}>🪙 {t(`tier_${selectedTier}`) !== `tier_${selectedTier}` ? t(`tier_${selectedTier}`) : selectedTier}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                     <span style={{ color: '#B8B8B8' }}>{t('availableTierBalance')}</span>
-                    <span style={{ fontWeight: 800, color: '#FFFFFF' }}>{(tierBreakdown[selectedTier]?.coins || 0)} Coins</span>
+                    <span style={{ fontWeight: 800, color: '#FFFFFF' }}>{(tierBreakdown[selectedTier]?.coins || 0)} {t('coinsUnit')}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#B8B8B8' }}>{t('applicableTierDiscount')}</span>
-                    <span style={{ fontWeight: 800, color: '#F2D675' }}>{getOfferDiscountForTier(selectedOffer, selectedTier)}% OFF</span>
+                    <span style={{ fontWeight: 800, color: '#F2D675' }}>{getOfferDiscountForTier(selectedOffer, selectedTier)}% {t('offUpper')}</span>
                   </div>
                 </div>
 
@@ -396,7 +406,7 @@ export default function CustomerRewards() {
                     className="btn-primary"
                     style={{ width: '100%', padding: '14px', fontSize: '15px', justifyContent: 'center' }}
                   >
-                    {isRedeeming ? t('redeemingProgress') : t('redeemWithTierCoins', { tier: selectedTier })}
+                    {isRedeeming ? t('redeemingProgress') : t('redeemWithTierCoins', { tier: t(`tier_${selectedTier}`) !== `tier_${selectedTier}` ? t(`tier_${selectedTier}`) : selectedTier })}
                   </button>
 
                   <button

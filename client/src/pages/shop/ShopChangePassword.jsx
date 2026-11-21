@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useI18n } from '../../i18n/I18nContext';
 import { APP_NAME } from '../../config/brand';
+import { parseApiResponse, resolveApiErrorMessage, resolveNetworkErrorMessage } from '../../utils/api';
 import { Lock, ArrowRight, LogOut } from 'lucide-react';
 import vp52Logo from '../../assets/vp52-logo.png';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 
 export default function ShopChangePassword() {
   const { user, logout } = useAuth();
@@ -46,9 +48,10 @@ export default function ShopChangePassword() {
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || t('pwChangeFailed'));
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (!parsed.ok || !data || !data.success) {
+        throw new Error(resolveApiErrorMessage(parsed, t, 'pwChangeFailed'));
       }
 
       try {
@@ -59,7 +62,7 @@ export default function ShopChangePassword() {
 
       window.location.href = '/shop/dashboard';
     } catch (err) {
-      setError(err.message);
+      setError(resolveNetworkErrorMessage(err, t, 'pwChangeFailed'));
       setLoading(false);
     }
   };
@@ -71,8 +74,12 @@ export default function ShopChangePassword() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px'
+      padding: '24px',
+      position: 'relative'
     }}>
+      <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}>
+        <LanguageSwitcher tone="dark" compact={true} />
+      </div>
       <div style={{
         background: '#111111',
         border: '1px solid rgba(212, 175, 55, 0.25)',

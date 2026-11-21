@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { signOutWithGoogle } from '../utils/googleAuth';
+import { parseApiResponse } from '../utils/api';
 
 const AuthContext = createContext();
 
@@ -20,17 +21,18 @@ export function AuthProvider({ children }) {
       fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${token}` }
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.success && data.user) {
+        .then(res => parseApiResponse(res))
+        .then(parsed => {
+          const data = parsed.data;
+          if (parsed.ok && data && data.success && data.user) {
             setUser(data.user);
             localStorage.setItem('rewards_user', JSON.stringify(data.user));
-          } else {
+          } else if (parsed.status === 401 || parsed.status === 403 || (parsed.isJson && data && !data.success)) {
             logout();
           }
         })
         .catch(() => {
-          // If server offline or token invalid
+          // If server offline or transient error, preserve current cached session state safely
         })
         .finally(() => setLoading(false));
     } else {
@@ -54,19 +56,21 @@ export function AuthProvider({ children }) {
       throw enhancedError;
     }
 
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (parseErr) {
-      console.error(`[AuthContext Parse Error] ${method} ${url} returned invalid JSON (HTTP ${res.status}):`, text.slice(0, 150));
-      const jsonError = new Error(`Invalid response from server (HTTP ${res.status}). Please ensure backend is running.`);
-      jsonError.status = res.status;
+    const parsed = await parseApiResponse(res);
+    if (!parsed.isJson || !parsed.data) {
+      console.error(`[AuthContext Parse Error] ${method} ${url} returned ${parsed.isHtml ? 'HTML' : 'non-JSON'} (HTTP ${parsed.status})`);
+      const jsonError = new Error(
+        parsed.status === 404
+          ? 'This service is temporarily unavailable on the server. Please try again later.'
+          : `Server returned an unexpected response (HTTP ${parsed.status}). Please try again shortly.`
+      );
+      jsonError.status = parsed.status;
       throw jsonError;
     }
 
+    const data = parsed.data;
     if (!res.ok || !data.success) {
-      const errMsg = data.error || data.message || `Request failed with HTTP ${res.status}`;
+      const errMsg = parsed.serverMessage || `Request failed with HTTP ${res.status}`;
       console.warn(`[AuthContext HTTP Error] ${method} ${url} -> HTTP ${res.status}:`, errMsg);
       const httpError = new Error(errMsg);
       httpError.status = res.status;
@@ -190,9 +194,28 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('rewards_token');
   };
 
+  const setSession = (nextToken, nextUser) => {
+    if (!nextToken || !nextUser) {
+      logout();
+      return;
+    }
+    setToken(nextToken);
+    setUser(nextUser);
+    localStorage.setItem('rewards_token', nextToken);
+    localStorage.setItem('rewards_user', JSON.stringify(nextUser));
+  };
+
   const updateUserBalance = (newBalance) => {
     if (user) {
       const updated = { ...user, balance: newBalance };
+      setUser(updated);
+      localStorage.setItem('rewards_user', JSON.stringify(updated));
+    }
+  };
+
+  const updateUserPhoto = (photoUrl) => {
+    if (user) {
+      const updated = { ...user, profile_photo: photoUrl };
       setUser(updated);
       localStorage.setItem('rewards_user', JSON.stringify(updated));
     }
@@ -210,13 +233,21 @@ export function AuthProvider({ children }) {
       forgotPassword,
       resetPassword,
       loginAdmin,
+      setSession,
       logout,
       updateUserBalance,
+      updateUserPhoto,
       refreshUser: () => {
         if (token) {
           fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.json())
-            .then(d => d && d.success && setUser(d.user))
+            .then(r => parseApiResponse(r))
+            .then(parsed => {
+              const d = parsed.data;
+              if (parsed.ok && d && d.success && d.user) {
+                setUser(d.user);
+                localStorage.setItem('rewards_user', JSON.stringify(d.user));
+              }
+            })
             .catch(() => {});
         }
       }

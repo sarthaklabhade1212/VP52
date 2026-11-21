@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n/I18nContext';
 import { Store, ArrowRight, ArrowLeft } from 'lucide-react';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import vp52Logo from '../assets/vp52-logo.png';
 
 export default function UserTypeSelection() {
@@ -15,8 +16,12 @@ export default function UserTypeSelection() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px'
+      padding: '24px',
+      position: 'relative'
     }}>
+      <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}>
+        <LanguageSwitcher tone="dark" compact={true} />
+      </div>
       <div style={{
         maxWidth: '520px',
         width: '100%',

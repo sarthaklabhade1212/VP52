@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, parseApiResponse } from '../utils/api';
 
 // Polls the unread-count endpoint for the chat nav badge.
 //   role: 'customer' -> /api/customer/conversations/unread-count
@@ -16,9 +16,9 @@ export default function useChatUnread(role, intervalMs = 20000) {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     try {
       const res = await apiFetch(`${basePath}/conversations/unread-count`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data && data.success && typeof data.unread_count === 'number') {
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success && typeof data.unread_count === 'number') {
         setUnread(data.unread_count);
       }
     } catch (e) {

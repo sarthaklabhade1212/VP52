@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { I18nProvider } from './i18n/I18nContext';
+import { I18nProvider, useI18n } from './i18n/I18nContext';
+import { initializeAdMob } from './services/admobService';
 
 // One-time premium startup animation (pure visual overlay; see StartupSplash.jsx)
 import StartupSplash from './components/StartupSplash';
@@ -20,6 +21,7 @@ import CustomerLogin from './pages/CustomerLogin';
 import CustomerCompleteProfile from './pages/CustomerCompleteProfile';
 import CustomerForgotPassword from './pages/CustomerForgotPassword';
 import CustomerHome from './pages/CustomerHome';
+import CustomerShopDetail from './pages/CustomerShopDetail';
 import CustomerRewards from './pages/CustomerRewards';
 import CustomerWallet from './pages/CustomerWallet';
 import CustomerHistory from './pages/CustomerHistory';
@@ -36,6 +38,9 @@ import ShopDashboard from './pages/shop/ShopDashboard';
 import ShopOffers from './pages/shop/ShopOffers';
 import ShopHistory from './pages/shop/ShopHistory';
 import MerchantProducts from './pages/shop/MerchantProducts';
+import MerchantPhotos from './pages/shop/MerchantPhotos';
+import MerchantReviews from './pages/shop/MerchantReviews';
+import MerchantOrders from './pages/shop/MerchantOrders';
 import MerchantBilling from './pages/shop/MerchantBilling';
 import MerchantMessages from './pages/MerchantMessages';
 import MerchantChat from './pages/MerchantChat';
@@ -44,21 +49,31 @@ import MerchantChat from './pages/MerchantChat';
 import AdminLayout from './components/AdminLayout';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminQRVerification from './pages/admin/AdminQRVerification';
 import AdminCustomers from './pages/admin/AdminCustomers';
 import AdminShops from './pages/admin/AdminShops';
+import AdminCategories from './pages/admin/AdminCategories';
+import AdminCoinManagement from './pages/admin/AdminCoinManagement';
 import AdminOffers from './pages/admin/AdminOffers';
-import AdminSettings from './pages/admin/AdminSettings';
-import AdminTransactions from './pages/admin/AdminTransactions';
+import AdminOrders from './pages/admin/AdminOrders';
+import AdminPayments from './pages/admin/AdminPayments';
+import AdminReferrals from './pages/admin/AdminReferrals';
+import AdminMemberships from './pages/admin/AdminMemberships';
+import AdminNotifications from './pages/admin/AdminNotifications';
+import AdminAdvertisements from './pages/admin/AdminAdvertisements';
+import AdminComplaints from './pages/admin/AdminComplaints';
+import AdminReports from './pages/admin/AdminReports';
+import AdminSecurity from './pages/admin/AdminSecurity';
+import AdminQRVerification from './pages/admin/AdminQRVerification';
 import AdminMerchantVerification from './pages/admin/AdminMerchantVerification';
 
 // Protected Route Wrapper for Customers
 function CustomerRoute({ children }) {
   const { user, loading } = useAuth();
+  const { t } = useI18n();
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', fontWeight: 700 }}>
-        Loading VP52...
+        {t('loadingVp52')}
       </div>
     );
   }
@@ -75,10 +90,11 @@ function CustomerRoute({ children }) {
 // Protected Route Wrapper for Shop Merchants
 function ShopRoute({ children }) {
   const { user, loading } = useAuth();
+  const { t } = useI18n();
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', fontWeight: 700 }}>
-        Loading merchant portal...
+        {t('loadingMerchantPortal')}
       </div>
     );
   }
@@ -91,10 +107,11 @@ function ShopRoute({ children }) {
 // Protected Route Wrapper for Admins
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
+  const { t } = useI18n();
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', background: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#D4AF37', fontWeight: 700 }}>
-        Loading admin panel...
+        {t('loadingAdminPanel')}
       </div>
     );
   }
@@ -119,6 +136,10 @@ function RootRedirect() {
 }
 
 export default function App() {
+  useEffect(() => {
+    initializeAdMob();
+  }, []);
+
   return (
     <I18nProvider>
       <AuthProvider>
@@ -148,6 +169,7 @@ export default function App() {
             >
               <Route index element={<Navigate to="home" replace />} />
               <Route path="home" element={<CustomerHome />} />
+              <Route path="shops/:id" element={<CustomerShopDetail />} />
               <Route path="rewards" element={<CustomerRewards />} />
               <Route path="wallet" element={<CustomerWallet />} />
               <Route path="history" element={<CustomerHistory />} />
@@ -182,6 +204,9 @@ export default function App() {
               <Route path="dashboard" element={<ShopDashboard />} />
               <Route path="billing" element={<MerchantBilling />} />
               <Route path="products" element={<MerchantProducts />} />
+              <Route path="photos" element={<MerchantPhotos />} />
+              <Route path="reviews" element={<MerchantReviews />} />
+              <Route path="orders" element={<MerchantOrders />} />
               <Route path="offers" element={<ShopOffers />} />
               <Route path="messages" element={<MerchantMessages />} />
               <Route path="messages/:conversationId" element={<MerchantChat />} />
@@ -200,13 +225,25 @@ export default function App() {
             >
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="verify-qr" element={<AdminQRVerification />} />
-              <Route path="merchant-verification" element={<AdminMerchantVerification />} />
               <Route path="customers" element={<AdminCustomers />} />
               <Route path="shops" element={<AdminShops />} />
+              <Route path="merchants" element={<Navigate to="/admin/shops" replace />} />
+              <Route path="categories" element={<AdminCategories />} />
+              <Route path="coins" element={<AdminCoinManagement />} />
+              <Route path="transactions" element={<Navigate to="/admin/coins" replace />} />
               <Route path="offers" element={<AdminOffers />} />
-              <Route path="settings" element={<AdminSettings />} />
-              <Route path="transactions" element={<AdminTransactions />} />
+              <Route path="orders" element={<AdminOrders />} />
+              <Route path="payments" element={<AdminPayments />} />
+              <Route path="referrals" element={<AdminReferrals />} />
+              <Route path="memberships" element={<AdminMemberships />} />
+              <Route path="notifications" element={<AdminNotifications />} />
+              <Route path="advertisements" element={<AdminAdvertisements />} />
+              <Route path="complaints" element={<AdminComplaints />} />
+              <Route path="reports" element={<AdminReports />} />
+              <Route path="security" element={<AdminSecurity />} />
+              <Route path="settings" element={<Navigate to="/admin/security" replace />} />
+              <Route path="verify-qr" element={<AdminQRVerification />} />
+              <Route path="merchant-verification" element={<AdminMerchantVerification />} />
             </Route>
 
             {/* Fallback */}

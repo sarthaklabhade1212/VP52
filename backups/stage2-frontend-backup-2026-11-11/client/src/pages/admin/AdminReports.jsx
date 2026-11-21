@@ -1,0 +1,260 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import {
+  BarChart3,
+  Download,
+  Calendar,
+  Users,
+  Store,
+  Coins,
+  ShoppingBag,
+  CreditCard,
+  Share2,
+  Headphones,
+  RefreshCw,
+  FileText,
+  Clock,
+  Tv,
+  ArrowLeftRight
+} from 'lucide-react';
+
+export default function AdminReports() {
+  const { token } = useAuth();
+  const [reportType, setReportType] = useState('customers');
+  const [dateRange, setDateRange] = useState('30d');
+  const [reportData, setReportData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const reportModules = [
+    { id: 'customers', label: 'Customers', icon: Users },
+    { id: 'merchants', label: 'Merchants', icon: Store },
+    { id: 'coins', label: 'Coin Economy', icon: Coins },
+    { id: 'sessions', label: '6-Hr Coin Sessions', icon: Clock },
+    { id: 'admob', label: 'AdMob & Native Ads', icon: Tv },
+    { id: 'transfers', label: 'Merchant Transfers', icon: ArrowLeftRight },
+    { id: 'orders', label: 'Orders & Sales', icon: ShoppingBag },
+    { id: 'payments', label: 'Payments', icon: CreditCard },
+    { id: 'referrals', label: 'Referrals', icon: Share2 },
+    { id: 'support', label: 'Support & Tickets', icon: Headphones },
+  ];
+
+  const dateFilterOptions = [
+    { id: 'today', label: 'Today' },
+    { id: 'yesterday', label: 'Yesterday' },
+    { id: '7d', label: 'Last 7 Days' },
+    { id: '30d', label: 'Last 30 Days' },
+    { id: 'this_month', label: 'This Month' },
+    { id: 'prev_month', label: 'Previous Month' },
+    { id: 'all', label: 'All Time' }
+  ];
+
+  const fetchReport = (type = reportType, range = dateRange) => {
+    setLoading(true);
+    fetch(`/api/admin/reports/${type}?range=${range}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(d => { if (d.success) setReportData(d); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (token) fetchReport(reportType, dateRange);
+  }, [token, reportType, dateRange]);
+
+  const handleExportCSV = () => {
+    window.open(`/api/admin/reports/${reportType}/export?range=${dateRange}&token=${token}`, '_blank');
+  };
+
+  const summary = reportData?.summary || {};
+  const dataRows = reportData?.rows || reportData?.data || [];
+
+  return (
+    <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+      
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '16px',
+        marginBottom: '20px',
+        background: '#0D0D0D',
+        border: '1px solid rgba(212, 175, 55, 0.2)',
+        borderRadius: '16px',
+        padding: '16px 20px'
+      }}>
+        <div>
+          <h1 style={{ fontSize: '22px', fontWeight: 900, color: '#FFFFFF', margin: 0 }}>
+            Reports & Analytics Hub
+          </h1>
+          <p style={{ fontSize: '12px', color: '#A0A0A0', margin: '4px 0 0 0' }}>
+            Multi-dimensional reporting across all 7 operational verticals with CSV exports
+          </p>
+        </div>
+
+        <button
+          onClick={handleExportCSV}
+          style={{
+            background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
+            border: 'none', color: '#050505', padding: '8px 18px', borderRadius: '10px',
+            fontSize: '12px', fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+          }}
+        >
+          <Download size={15} /> Export {reportType.toUpperCase()} CSV
+        </button>
+      </div>
+
+      {/* Date Range Selector Toolbar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '12px',
+        background: '#121212',
+        border: '1px solid rgba(212, 175, 55, 0.15)',
+        borderRadius: '12px',
+        padding: '10px 16px',
+        marginBottom: '20px',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <Calendar size={14} color="#D4AF37" style={{ marginRight: '6px' }} />
+          {dateFilterOptions.map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => setDateRange(opt.id)}
+              style={{
+                background: dateRange === opt.id ? 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)' : '#1A1A1A',
+                color: dateRange === opt.id ? '#050505' : '#A0A0A0',
+                border: 'none', padding: '5px 12px', borderRadius: '6px', fontSize: '11px',
+                fontWeight: dateRange === opt.id ? 800 : 600, cursor: 'pointer'
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => fetchReport(reportType, dateRange)}
+          style={{ background: 'none', border: 'none', color: '#D4AF37', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+        >
+          <RefreshCw size={13} className={loading ? 'spin' : ''} /> Refresh Data
+        </button>
+      </div>
+
+      {/* 7 Report Dimension Tabs */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid rgba(212, 175, 55, 0.2)',
+        marginBottom: '20px',
+        background: '#0D0D0D',
+        borderRadius: '12px 12px 0 0',
+        padding: '0 10px',
+        overflowX: 'auto'
+      }}>
+        {reportModules.map(m => {
+          const Icon = m.icon;
+          return (
+            <button
+              key={m.id}
+              onClick={() => setReportType(m.id)}
+              style={{
+                padding: '14px 18px',
+                background: 'none',
+                border: 'none',
+                borderBottom: reportType === m.id ? '3px solid #D4AF37' : '3px solid transparent',
+                color: reportType === m.id ? '#F2D675' : '#888',
+                fontWeight: reportType === m.id ? 800 : 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Icon size={16} /> {m.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Aggregated KPI Summary Cards for Current Report */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '14px',
+        marginBottom: '24px'
+      }}>
+        {Object.entries(summary).map(([key, val], idx) => (
+          <div
+            key={idx}
+            style={{
+              background: '#0E0E0E',
+              border: '1px solid rgba(212, 175, 55, 0.2)',
+              borderRadius: '14px',
+              padding: '16px'
+            }}
+          >
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0', textTransform: 'uppercase' }}>
+              {key.replace(/_/g, ' ')}
+            </span>
+            <div style={{ fontSize: '24px', fontWeight: 900, color: '#F2D675', marginTop: '4px' }}>
+              {typeof val === 'number' ? (key.includes('amount') || key.includes('revenue') || key.includes('liability') ? `₹${val.toLocaleString()}` : val.toLocaleString()) : String(val)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Report Data Table */}
+      <div style={{
+        background: '#0D0D0D',
+        borderRadius: '16px',
+        border: '1px solid rgba(212, 175, 55, 0.2)',
+        overflow: 'hidden'
+      }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(212, 175, 55, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
+            {reportType.toUpperCase()} DATA RECORDS
+          </h3>
+          <span style={{ fontSize: '11px', color: '#A0A0A0' }}>
+            {dataRows.length} rows loaded for timeframe ({dateRange})
+          </span>
+        </div>
+
+        <div style={{ overflowX: 'auto', maxHeight: '500px' }}>
+          {dataRows.length > 0 ? (
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ background: '#121212', borderBottom: '1px solid rgba(212, 175, 55, 0.15)', color: '#A0A0A0', fontWeight: 800, fontSize: '10px', textTransform: 'uppercase' }}>
+                  {Object.keys(dataRows[0]).slice(0, 8).map((col, idx) => (
+                    <th key={idx} style={{ padding: '12px 14px' }}>{col.replace(/_/g, ' ')}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map((row, rIdx) => (
+                  <tr key={rIdx} style={{ borderBottom: '1px solid rgba(212, 175, 55, 0.08)' }}>
+                    {Object.keys(dataRows[0]).slice(0, 8).map((col, cIdx) => (
+                      <td key={cIdx} style={{ padding: '10px 14px', color: cIdx === 0 ? '#D4AF37' : '#E0E0E0' }}>
+                        {String(row[col] !== null && row[col] !== undefined ? row[col] : '—')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#888', fontSize: '13px' }}>
+              {loading ? 'Compiling report metrics...' : 'No records found for the selected timeframe'}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

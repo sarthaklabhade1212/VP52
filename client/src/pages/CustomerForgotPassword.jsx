@@ -49,7 +49,7 @@ export default function CustomerForgotPassword() {
     setSuccessMessage(null);
 
     if (!email.trim()) {
-      setError('Please enter your email address');
+      setError(t('enterEmailError'));
       return;
     }
 
@@ -57,14 +57,14 @@ export default function CustomerForgotPassword() {
 
     try {
       const res = await forgotPassword(email.trim());
-      setSuccessMessage(res.message || 'If an account exists with this email, password reset instructions have been initiated.');
+      setSuccessMessage(res.message || t('resetInstructionsInitiated'));
 
       if (res.dev_reset_token) {
         setDevToken(res.dev_reset_token);
         setToken(res.dev_reset_token);
       }
     } catch (err) {
-      setError(err.message || 'Failed to submit reset request. Please try again.');
+      setError(err.message || t('resetRequestFailed'));
     } finally {
       setLoading(false);
     }
@@ -78,17 +78,17 @@ export default function CustomerForgotPassword() {
     setSuccessMessage(null);
 
     if (!token.trim()) {
-      setError('Password reset token is required');
+      setError(t('resetTokenRequired'));
       return;
     }
 
     if (password.length < 8) {
-      setError(t('passwordMinLength') || 'Password must be at least 8 characters long');
+      setError(t('passwordMinLength'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError(t('passwordMismatch') || 'Passwords do not match');
+      setError(t('passwordMismatch'));
       return;
     }
 
@@ -100,10 +100,10 @@ export default function CustomerForgotPassword() {
         password,
         confirm_password: confirmPassword
       });
-      setSuccessMessage(res.message || 'Password reset successfully! You can now sign in.');
+      setSuccessMessage(res.message || t('passwordResetSuccess'));
       setStep('done');
     } catch (err) {
-      setError(err.message || 'Failed to reset password. Link may be expired or invalid.');
+      setError(err.message || t('resetPasswordFailed'));
     } finally {
       setLoading(false);
     }
@@ -181,8 +181,8 @@ export default function CustomerForgotPassword() {
             }}
           >
             {step === 'reset'
-              ? 'Enter your reset token and choose a new secure password.'
-              : 'Enter your registered customer email to recover your account.'}
+              ? t('resetStepSubtitle')
+              : t('requestStepSubtitle')}
           </p>
         </div>
 
@@ -241,10 +241,10 @@ export default function CustomerForgotPassword() {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#D4AF37', fontSize: '13px', fontWeight: 700, marginBottom: '6px' }}>
               <Key size={16} />
-              <span>Development Reset Token</span>
+              <span>{t('devResetTokenTitle')}</span>
             </div>
             <p style={{ margin: '0 0 10px 0', fontSize: '11px', color: '#999999', wordBreak: 'break-all' }}>
-              Code: <strong style={{ color: '#FFFFFF' }}>{devToken}</strong>
+              {t('codeLabel')} <strong style={{ color: '#FFFFFF' }}>{devToken}</strong>
             </p>
             <button
               type="button"
@@ -261,7 +261,7 @@ export default function CustomerForgotPassword() {
                 cursor: 'pointer'
               }}
             >
-              Proceed to Enter New Password →
+              {t('proceedNewPasswordBtn')}
             </button>
           </div>
         )}
@@ -321,10 +321,10 @@ export default function CustomerForgotPassword() {
               }}
             >
               {loading ? (
-                <span>{t('pleaseWait') || 'Sending instructions...'}</span>
+                <span>{t('sendingInstructions')}</span>
               ) : (
                 <>
-                  <span>{t('sendResetInstructions') || 'Send Reset Instructions'}</span>
+                  <span>{t('sendResetInstructions')}</span>
                   <ArrowRight size={18} color="#050505" />
                 </>
               )}
@@ -343,7 +343,7 @@ export default function CustomerForgotPassword() {
                   textDecoration: 'underline'
                 }}
               >
-                Already have a reset code? Click here
+                {t('alreadyHaveResetCode')}
               </button>
             </div>
           </form>
@@ -362,7 +362,7 @@ export default function CustomerForgotPassword() {
                   display: 'block'
                 }}
               >
-                Reset Token *
+                {t('resetTokenLabel')}
               </label>
               <div style={{ position: 'relative' }}>
                 <Key size={18} color="#C9A227" style={{ position: 'absolute', left: '14px', top: '14px' }} />
@@ -371,7 +371,7 @@ export default function CustomerForgotPassword() {
                   required
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
-                  placeholder="Paste your 64-character token"
+                  placeholder={t('pasteResetTokenPlaceholder')}
                   style={{
                     width: '100%',
                     background: '#151515',
@@ -504,10 +504,10 @@ export default function CustomerForgotPassword() {
               }}
             >
               {loading ? (
-                <span>{t('pleaseWait') || 'Updating password...'}</span>
+                <span>{t('updatingPasswordBtn')}</span>
               ) : (
                 <>
-                  <span>{t('resetPassword') || 'Set New Password'}</span>
+                  <span>{t('setNewPasswordBtn')}</span>
                   <ArrowRight size={18} color="#050505" />
                 </>
               )}

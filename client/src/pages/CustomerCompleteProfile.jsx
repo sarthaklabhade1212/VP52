@@ -103,7 +103,7 @@ export default function CustomerCompleteProfile() {
       // Once successfully completed, proceed to customer dashboard
       navigate('/customer/home', { replace: true });
     } catch (err) {
-      setError(err.message || 'Failed to complete profile. Please check your inputs and try again.');
+      setError(err.message || t('completeProfileFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -263,7 +263,7 @@ export default function CustomerCompleteProfile() {
               />
             </div>
             <p style={{ margin: '4px 0 0 2px', fontSize: '11px', color: '#666666' }}>
-              This account is securely linked to your verified Google identity.
+              {t('googleLinkedHint')}
             </p>
           </div>
 
@@ -287,7 +287,7 @@ export default function CustomerCompleteProfile() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="John Doe"
+                placeholder={t('namePlaceholder')}
                 style={{
                   width: '100%',
                   background: '#151515',
@@ -354,7 +354,7 @@ export default function CustomerCompleteProfile() {
               />
             </div>
             <p style={{ margin: '4px 0 0 2px', fontSize: '11px', color: '#666666' }}>
-              Required for merchant discount verification and account recovery.
+              {t('mobileRecoveryHint')}
             </p>
           </div>
 
@@ -408,7 +408,7 @@ export default function CustomerCompleteProfile() {
               </button>
             </div>
             <p style={{ margin: '4px 0 0 2px', fontSize: '11px', color: '#666666' }}>
-              Minimum 8 characters. Allows email/password login anytime.
+              {t('min8CharsHint')}
             </p>
           </div>
 

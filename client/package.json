@@ -6,15 +6,20 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:prod": "vite build --mode production",
     "build:dev": "vite build --mode development",
     "build:android": "vite build --mode development",
-    "sync:android": "vite build --mode development && npx cap sync android",
+    "sync:android": "vite build --mode production && npx cap sync android",
+    "sync:android:prod": "vite build --mode production && npx cap sync android",
+    "sync:android:dev": "vite build --mode development && npx cap sync android",
     "preview": "vite preview"
   },
   "engines": {
     "node": ">=20.19.0"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^8.4.1",
+    "@capacitor-mlkit/barcode-scanning": "^8.2.2",
     "@capacitor/android": "^8.5.0",
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",

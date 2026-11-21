@@ -1,0 +1,30 @@
+[Unit]
+Description=VP52 Customer Rewards - Isolated Staging API Service
+After=network.target
+
+[Service]
+Type=simple
+User=vp52staging
+Group=vp52staging
+WorkingDirectory=/var/www/vp52-staging/server
+EnvironmentFile=/var/www/vp52-staging/server/.env.staging
+ExecStart=/usr/bin/node index.js
+Restart=always
+RestartSec=5s
+
+# Security Hardening for Staging Service
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource Limits
+LimitNOFILE=65535
+
+# Logging to Syslog / Journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vp52-staging
+
+[Install]
+WantedBy=multi-user.target

@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n/I18nContext';
+import { parseApiResponse } from '../../utils/api';
+import { formatInr, formatCoins } from '../../utils/formatters';
 import { History, Filter, CheckCircle2, Clock } from 'lucide-react';
 
 export default function ShopHistory() {
   const { token } = useAuth();
+  const { t, locale } = useI18n();
   const [history, setHistory] = useState([]);
   const [timeFilter, setTimeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -14,8 +18,11 @@ export default function ShopHistory() {
     fetch(`/api/shop/history?${query}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(res => res.json())
-      .then(data => { if (data.success) setHistory(data.history || []); })
+      .then(parseApiResponse)
+      .then(parsed => {
+        const data = parsed.data;
+        if (parsed.ok && data && data.success) setHistory(data.history || []);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
@@ -29,10 +36,10 @@ export default function ShopHistory() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
           <h2 style={{ fontSize: '24px', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
-            <History size={26} color="#D4AF37" /> Store Redemption History
+            <History size={26} color="#D4AF37" /> {t('storeRedemptionHistoryTitle')}
           </h2>
           <p style={{ fontSize: '14px', color: '#B8B8B8' }}>
-            Audit log of all vouchers redeemed and processed at your store location.
+            {t('storeRedemptionHistorySub')}
           </p>
         </div>
 
@@ -44,10 +51,10 @@ export default function ShopHistory() {
             value={timeFilter}
             onChange={(e) => setTimeFilter(e.target.value)}
           >
-            <option value="all">Time: All Time</option>
-            <option value="today">Time: Today</option>
-            <option value="week">Time: This Week</option>
-            <option value="month">Time: This Month</option>
+            <option value="all">{t('timeAllTime')}</option>
+            <option value="today">{t('timeToday')}</option>
+            <option value="week">{t('timeThisWeek')}</option>
+            <option value="month">{t('timeThisMonth')}</option>
           </select>
 
           <select
@@ -56,9 +63,9 @@ export default function ShopHistory() {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="all">Status: All</option>
-            <option value="USED">Status: Used</option>
-            <option value="ACTIVE">Status: Active</option>
+            <option value="all">{t('statusAllOption')}</option>
+            <option value="USED">{t('statusUsedOption')}</option>
+            <option value="ACTIVE">{t('statusActiveOption')}</option>
           </select>
         </div>
       </div>
@@ -68,20 +75,20 @@ export default function ShopHistory() {
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
           <thead>
             <tr style={{ background: '#151515', borderBottom: '1px solid rgba(212, 175, 55, 0.15)', color: '#B8B8B8', fontWeight: 700, fontSize: '12px', textTransform: 'uppercase' }}>
-              <th style={{ padding: '14px 20px' }}>Redemption ID</th>
-              <th style={{ padding: '14px 20px' }}>Customer</th>
-              <th style={{ padding: '14px 20px' }}>Offer Applied</th>
-              <th style={{ padding: '14px 20px' }}>Discount</th>
-              <th style={{ padding: '14px 20px' }}>Points Used</th>
-              <th style={{ padding: '14px 20px' }}>Status</th>
-              <th style={{ padding: '14px 20px' }}>Date & Time</th>
+              <th style={{ padding: '14px 20px' }}>{t('redemptionIdCol')}</th>
+              <th style={{ padding: '14px 20px' }}>{t('customerLabel')}</th>
+              <th style={{ padding: '14px 20px' }}>{t('offerAppliedCol')}</th>
+              <th style={{ padding: '14px 20px' }}>{t('discountCol')}</th>
+              <th style={{ padding: '14px 20px' }}>{t('pointsUsedCol')}</th>
+              <th style={{ padding: '14px 20px' }}>{t('statusCol')}</th>
+              <th style={{ padding: '14px 20px' }}>{t('dateTimeCol')}</th>
             </tr>
           </thead>
           <tbody>
             {history.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#B8B8B8' }}>
-                  No redemptions found for selected filters.
+                  {t('noRedemptionsFiltered')}
                 </td>
               </tr>
             ) : (
@@ -93,15 +100,15 @@ export default function ShopHistory() {
                     <span style={{ fontSize: '12px', color: '#B8B8B8' }}>{r.customer_email}</span>
                   </td>
                   <td style={{ padding: '14px 20px', color: '#B8B8B8' }}>{r.offer_title}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: 800, color: '#D4AF37' }}>{r.discount_percent}% OFF (Max ₹{r.max_discount_inr})</td>
-                  <td style={{ padding: '14px 20px', fontWeight: 700, color: '#F2D675' }}>🪙 {r.points_deducted} Pts</td>
+                  <td style={{ padding: '14px 20px', fontWeight: 800, color: '#D4AF37' }}>{r.discount_percent}% {t('offUpper')} ({t('maxCapShort')} {formatInr(r.max_discount_inr, locale)})</td>
+                  <td style={{ padding: '14px 20px', fontWeight: 700, color: '#F2D675' }}>🪙 {formatCoins(r.points_deducted, locale, t('coinsUnit'))}</td>
                   <td style={{ padding: '14px 20px' }}>
                     <span className={`badge ${r.status === 'USED' ? 'badge-used' : r.status === 'ACTIVE' ? 'badge-active' : 'badge-expired'}`}>
-                      {r.status}
+                      {r.status === 'USED' ? t('statusUsed') : r.status === 'ACTIVE' ? t('statusActive') : t('statusExpired')}
                     </span>
                   </td>
                   <td style={{ padding: '14px 20px', fontSize: '12px', color: '#B8B8B8' }}>
-                    {new Date(r.redeemed_at || r.created_at).toLocaleString('en-IN')}
+                    {new Date(r.redeemed_at || r.created_at).toLocaleString(locale)}
                   </td>
                 </tr>
               ))

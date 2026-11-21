@@ -6,7 +6,7 @@ import { useI18n } from '../i18n/I18nContext';
 export default function CustomerChat() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
-  const { t } = useI18n();
+  const { t, translateCategory } = useI18n();
 
   return (
     <ChatWindow
@@ -18,7 +18,7 @@ export default function CustomerChat() {
         title: c.shop_name || '',
         subtitle: c.shop_status && c.shop_status !== 'active'
           ? t('chatUnavailableShop')
-          : (c.shop_category || t('merchantLabel')),
+          : (translateCategory(c.shop_category) || t('merchantLabel')),
       })}
       onBack={() => navigate('/customer/messages')}
     />

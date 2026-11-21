@@ -8,6 +8,7 @@ import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.splashscreen.SplashScreen;
 
 import com.getcapacitor.BridgeActivity;
@@ -27,14 +28,22 @@ public class MainActivity extends BridgeActivity
         // Install the native Android splash screen before creating the activity.
         SplashScreen.installSplashScreen(this);
 
+        // Register custom local Capacitor plugins before super.onCreate initializes the bridge.
+        registerPlugin(Vp52AdMobPlugin.class);
+
         super.onCreate(savedInstanceState);
 
         WebView webView = getBridge().getWebView();
 
+        // Restrict WebView remote debugging and mixed content strictly to debug builds
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+
         if (webView != null) {
             WebSettings settings = webView.getSettings();
             settings.setMixedContentMode(
-                    WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    BuildConfig.DEBUG
+                            ? WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            : WebSettings.MIXED_CONTENT_NEVER_ALLOW
             );
             settings.setMediaPlaybackRequiresUserGesture(false);
 
@@ -65,6 +74,20 @@ public class MainActivity extends BridgeActivity
                 "VIPSOrigin",
                 "Capacitor androidScheme = " + getBridge().getScheme()
         );
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                WebView currentWebView = getBridge() != null ? getBridge().getWebView() : null;
+                if (currentWebView != null && currentWebView.canGoBack()) {
+                    currentWebView.goBack();
+                    return;
+                }
+                setEnabled(false);
+                getOnBackPressedDispatcher().onBackPressed();
+                setEnabled(true);
+            }
+        });
     }
 
     @Override
@@ -76,7 +99,9 @@ public class MainActivity extends BridgeActivity
                     getBridge().getWebView().getSettings();
 
             settings.setMixedContentMode(
-                    WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    BuildConfig.DEBUG
+                            ? WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            : WebSettings.MIXED_CONTENT_NEVER_ALLOW
             );
             settings.setMediaPlaybackRequiresUserGesture(false);
         }

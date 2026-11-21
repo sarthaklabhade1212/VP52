@@ -28,8 +28,14 @@ const resolveBaseUrl = () => {
     );
   }
   if (import.meta.env.MODE === 'production') {
-    let host = '';
-    try { host = new URL(base).hostname; } catch (e) { host = ''; }
+    let parsed = null;
+    try { parsed = new URL(base); } catch (e) { parsed = null; }
+    if (!parsed || parsed.protocol !== 'https:') {
+      throw new Error(
+        '[config] Production build requires an HTTPS VITE_API_URL origin.'
+      );
+    }
+    const host = parsed.hostname;
     if (DEV_ONLY_HOSTS.includes(host)) {
       throw new Error(
         `[config] VITE_API_URL points to development-only host "${host}" in a production build. ` +
@@ -99,6 +105,32 @@ export const getApiUrl = (path) => {
   // Native app, or a production browser build: require an explicit absolute origin.
   const cleanBase = resolveBaseUrl();
   return `${cleanBase}${cleanPath}`;
+};
+
+/**
+ * Resolves a backend-hosted uploaded media path (e.g. `/uploads/customer_profile_123.jpg`)
+ * into an environment-appropriate URL:
+ * - Preserves `http://`, `https://`, `data:`, and `blob:` URLs untouched.
+ * - Uses relative `/uploads/...` during desktop Vite dev (handled by Vite's `/uploads` proxy).
+ * - Resolves to `${VITE_API_URL}/uploads/...` in Capacitor native apps and production builds
+ *   (`http://10.0.2.2:5000/uploads/...` in Android dev; `https://api.vp52coin.com/uploads/...` in prod).
+ */
+export const resolveMediaUrl = (url) => {
+  if (!url || typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('blob:')
+  ) {
+    return trimmed;
+  }
+
+  return getApiUrl(trimmed.startsWith('/') ? trimmed : `/${trimmed}`);
 };
 
 /**
@@ -193,3 +225,9 @@ export const setupGlobalFetchInterceptor = () => {
 
 // Auto-run interceptor on module load
 setupGlobalFetchInterceptor();
+
+export {
+  parseApiResponse,
+  resolveApiErrorMessage,
+  resolveNetworkErrorMessage
+} from './apiResponse';

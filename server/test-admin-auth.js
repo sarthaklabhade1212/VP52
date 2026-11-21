@@ -14,9 +14,91 @@
 const assert = require('assert');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+const http = require('http');
+const { Readable, Duplex } = require('stream');
+const express = require('express');
+const cors = require('cors');
 
 const db = require('./db/database');
 const { createOrResetAdmin, listAdmins } = require('./scripts/manage-admin');
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '15mb' }));
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/customer', require('./routes/customer'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/shop', require('./routes/shop'));
+app.use('/api/merchant', require('./routes/merchant'));
+
+// In-process fetch helper to run cleanly in sandboxed test environments
+async function fetch(url, options = {}) {
+  const parsedUrl = new URL(url);
+  const pathWithQuery = parsedUrl.pathname + parsedUrl.search;
+  
+  return new Promise((resolve, reject) => {
+    const req = new Readable({ read() {} });
+    req.method = options.method || 'GET';
+    req.url = pathWithQuery;
+    req.httpVersion = '1.1';
+    req.httpVersionMajor = 1;
+    req.httpVersionMinor = 1;
+    req.headers = {};
+    for (const key of Object.keys(options.headers || {})) {
+      req.headers[key.toLowerCase()] = options.headers[key];
+    }
+    const fakeSocket = new Duplex({ read() {}, write(chunk, enc, cb) { cb(); } });
+    fakeSocket.remoteAddress = '127.0.0.1';
+    fakeSocket.encrypted = false;
+    req.socket = req.connection = fakeSocket;
+
+    let payload = null;
+    if (options.body !== undefined && options.body !== null) {
+      payload = Buffer.from(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
+      if (!req.headers['content-type']) req.headers['content-type'] = 'application/json';
+      req.headers['content-length'] = String(payload.length);
+    }
+
+    const res = new http.ServerResponse(req);
+    const chunks = [];
+    let settled = false;
+
+    res.write = function (chunk) {
+      if (chunk) chunks.push(Buffer.from(chunk));
+      return true;
+    };
+    res.end = function (chunk, encoding, cb) {
+      if (typeof chunk === 'function') { cb = chunk; chunk = null; }
+      else if (typeof encoding === 'function') { cb = encoding; }
+      if (chunk) chunks.push(Buffer.from(chunk));
+      if (!settled) {
+        settled = true;
+        const text = Buffer.concat(chunks).toString('utf8');
+        let parsed = text;
+        try { parsed = JSON.parse(text); } catch (e) {}
+        resolve({
+          status: res.statusCode,
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          headers: res.getHeaders ? res.getHeaders() : {},
+          json: async () => parsed,
+          text: async () => text
+        });
+      }
+      if (typeof cb === 'function') cb();
+      return res;
+    };
+
+    try {
+      app(req, res);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    if (payload) req.push(payload);
+    req.push(null);
+  });
+}
 
 const BASE_URL = 'http://127.0.0.1:5000';
 

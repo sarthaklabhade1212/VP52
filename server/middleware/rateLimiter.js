@@ -20,6 +20,34 @@ if (cleanupInterval.unref) {
 }
 
 /**
+ * Resolve the real client IP safely.
+ * Relies on Express's `req.ip` (which honors `app.set('trust proxy', 'loopback')`
+ * so X-Forwarded-For is only trusted from local Nginx/loopback hops and client-spoofed
+ * leftmost headers are ignored), with normalized socket remoteAddress fallback.
+ */
+function normalizeIp(rawIp) {
+  if (!rawIp || typeof rawIp !== 'string') return 'unknown';
+  const trimmed = rawIp.trim();
+  if (!trimmed) return 'unknown';
+  if (trimmed.startsWith('::ffff:')) {
+    return trimmed.slice(7);
+  }
+  return trimmed;
+}
+
+function getClientIp(req) {
+  if (req && req.ip) {
+    return normalizeIp(req.ip);
+  }
+  const socketIp = req?.socket?.remoteAddress || req?.connection?.remoteAddress;
+  return normalizeIp(socketIp);
+}
+
+function _clearRateLimitStoreForTest() {
+  hitRecords.clear();
+}
+
+/**
  * Creates an Express rate-limiting middleware.
  *
  * @param {Object} options
@@ -33,11 +61,7 @@ function createRateLimiter(options = {}) {
   const max = options.max || 15;
   const message = options.message || 'Too many attempts. Please try again later.';
   const keyGen = options.keyGenerator || ((req) => {
-    const ip = req.ip ||
-      req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-      req.connection?.remoteAddress ||
-      req.socket?.remoteAddress ||
-      '127.0.0.1';
+    const ip = getClientIp(req);
     return `${req.baseUrl || ''}${req.path}:${ip}`;
   });
 
@@ -79,5 +103,7 @@ function createRateLimiter(options = {}) {
 }
 
 module.exports = {
-  createRateLimiter
+  createRateLimiter,
+  getClientIp,
+  _clearRateLimitStoreForTest
 };

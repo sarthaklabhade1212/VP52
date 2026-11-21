@@ -7,10 +7,11 @@ import useChatUnread from '../hooks/useChatUnread';
 import LanguageSwitcher from './LanguageSwitcher';
 import { APP_NAME } from '../config/brand';
 import vp52Logo from '../assets/vp52-logo.png';
+import { formatNumber } from '../utils/formatters';
 
 export default function CustomerLayout() {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const unread = useChatUnread('customer');
 
   return (
@@ -58,7 +59,7 @@ export default function CustomerLayout() {
           }}>
             <span style={{ fontSize: '14px' }}>🪙</span>
             <span style={{ fontSize: '13px', fontWeight: 800, color: '#F2D675' }}>
-              {user ? (user.balance || 0).toLocaleString() : 0} {t('ptsSuffix')}
+              {user ? formatNumber(user.balance || 0, locale) : 0} {t('coinsUnit')}
             </span>
           </div>
         </div>

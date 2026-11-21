@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Trash2, ArrowLeft, CheckCircle2, AlertTriangle, ShieldCheck, Mail } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import { useI18n } from '../i18n/I18nContext';
+import { parseApiResponse, resolveApiErrorMessage, resolveNetworkErrorMessage } from '../utils/api';
 import vp52Logo from '../assets/vp52-logo.png';
 
 export default function DeleteAccount() {
+  const { t } = useI18n();
   const [identifier, setIdentifier] = useState('');
   const [reason, setReason] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -14,7 +17,7 @@ export default function DeleteAccount() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!identifier.trim()) {
-      setError('Please provide your registered email address or phone number.');
+      setError(t('deleteEnterIdentifierError'));
       return;
     }
 
@@ -28,15 +31,16 @@ export default function DeleteAccount() {
         body: JSON.stringify({ identifier: identifier.trim(), reason: reason.trim() })
       });
 
-      const data = await res.json();
-      if (data.success) {
+      const parsed = await parseApiResponse(res);
+      const data = parsed.data;
+      if (parsed.ok && data && data.success) {
         setSubmitted(true);
       } else {
-        setError(data.error || 'Failed to submit request. Please try again or contact support.');
+        setError(resolveApiErrorMessage(parsed, t, 'deleteSubmitFailedError'));
       }
     } catch (err) {
       console.error(err);
-      setError('Network error. Please email shindesanket.vp52@gmail.com directly.');
+      setError(resolveNetworkErrorMessage(err, t, 'deleteNetworkError'));
     } finally {
       setLoading(false);
     }
@@ -59,7 +63,7 @@ export default function DeleteAccount() {
               fontWeight: 700
             }}
           >
-            <ArrowLeft size={16} /> Home
+            <ArrowLeft size={16} /> {t('navHome')}
           </Link>
           <LanguageSwitcher tone="dark" compact={true} />
         </div>
@@ -78,10 +82,10 @@ export default function DeleteAccount() {
             }}
           />
           <h1 style={{ fontSize: '26px', color: '#FFFFFF', fontWeight: 800, margin: '0 0 6px 0' }}>
-            Request VP52 Account & Data Deletion
+            {t('deletePageHeading')}
           </h1>
           <p style={{ fontSize: '13px', color: '#A0A0A0', margin: 0 }}>
-            Official account deletion portal operated by developer Sanket Shinde
+            {t('deletePageSub')}
           </p>
         </div>
 
@@ -94,22 +98,22 @@ export default function DeleteAccount() {
           marginBottom: '24px'
         }}>
           <h2 style={{ fontSize: '16px', color: '#F2D675', fontWeight: 700, margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ShieldCheck size={18} color="#D4AF37" /> Your Data Deletion Rights
+            <ShieldCheck size={18} color="#D4AF37" /> {t('deleteRightsHeading')}
           </h2>
           <p style={{ fontSize: '13px', lineHeight: '1.6', color: '#CCCCCC', margin: '0 0 10px 0' }}>
-            In accordance with Google Play Developer Policies and data protection standards, you have the right to request the complete deletion of your VP52 account and personal information even if you have already uninstalled the application.
+            {t('deleteRightsIntro')}
           </p>
           <div style={{ fontSize: '12px', color: '#A0A0A0', lineHeight: '1.5' }}>
-            <strong style={{ color: '#FFFFFF' }}>What data is permanently erased:</strong>
+            <strong style={{ color: '#FFFFFF' }}>{t('deleteErasedHeading')}</strong>
             <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px' }}>
-              <li>Your name, email address, phone number, and password hashes.</li>
-              <li>Your reward wallet, accumulated coin balances, and tier batches.</li>
-              <li>Your ad viewing sessions, active QR tokens, and redemption history.</li>
-              <li>Customer-merchant chat conversations and customer feedback.</li>
+              <li>{t('deleteErasedBullet1')}</li>
+              <li>{t('deleteErasedBullet2')}</li>
+              <li>{t('deleteErasedBullet3')}</li>
+              <li>{t('deleteErasedBullet4')}</li>
             </ul>
           </div>
           <p style={{ fontSize: '11px', color: '#777777', margin: '10px 0 0 0' }}>
-            * Past store transaction receipts are retained in an anonymized format for merchant accounting and statutory compliance with customer identity unlinked.
+            {t('deleteAnonymizedFootnote')}
           </p>
         </div>
 
@@ -124,20 +128,21 @@ export default function DeleteAccount() {
           }}>
             <CheckCircle2 size={48} color="#10b981" style={{ marginBottom: '14px' }} />
             <h3 style={{ fontSize: '20px', color: '#FFFFFF', fontWeight: 800, margin: '0 0 8px 0' }}>
-              Deletion Request Submitted
+              {t('deleteSubmittedTitle')}
             </h3>
             <p style={{ fontSize: '14px', color: '#CCCCCC', lineHeight: '1.6', margin: '0 0 20px 0' }}>
-              Your request has been securely recorded in the operator review queue. The application operator (Sanket Shinde) will review your submission and contact you at <strong>{identifier}</strong> to verify your identity before processing permanent account deletion.
+              {t('deleteSubmittedBody', { identifier })}
             </p>
             <p style={{ fontSize: '12px', color: '#888888', margin: '0 0 24px 0' }}>
-              If you have further questions, you can contact the developer directly at <a href="mailto:shindesanket.vp52@gmail.com" style={{ color: '#D4AF37' }}>shindesanket.vp52@gmail.com</a>.
+              {t('deleteSubmittedQuestions')}{' '}
+              <a href="mailto:shindesanket.vp52@gmail.com" style={{ color: '#D4AF37' }}>shindesanket.vp52@gmail.com</a>.
             </p>
             <Link
               to="/"
               className="btn-primary"
               style={{ padding: '12px 24px', display: 'inline-block', textDecoration: 'none' }}
             >
-              Return to VP52 Home
+              {t('returnToVp52Home')}
             </Link>
           </div>
         ) : (
@@ -153,7 +158,7 @@ export default function DeleteAccount() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', color: '#ef4444' }}>
               <Trash2 size={20} color="#ef4444" />
               <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>
-                Account Deletion Form
+                {t('deleteFormHeading')}
               </h3>
             </div>
 
@@ -173,14 +178,14 @@ export default function DeleteAccount() {
 
             <div style={{ marginBottom: '16px' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#FFFFFF', marginBottom: '6px' }}>
-                Registered Email Address or Phone Number *
+                {t('deleteIdentifierLabel')}
               </label>
               <input
                 type="text"
                 required
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="e.g. yourname@example.com or 9876543210"
+                placeholder={t('deleteIdentifierPlaceholder')}
                 style={{
                   width: '100%',
                   padding: '12px 14px',
@@ -197,12 +202,12 @@ export default function DeleteAccount() {
 
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#B8B8B8', marginBottom: '6px' }}>
-                Reason for Deletion (Optional)
+                {t('deleteReasonLabel')}
               </label>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Help us understand why you are leaving (optional)..."
+                placeholder={t('deleteReasonPlaceholder')}
                 rows={3}
                 style={{
                   width: '100%',
@@ -230,7 +235,7 @@ export default function DeleteAccount() {
             }}>
               <AlertTriangle size={18} color="#ef4444" style={{ flexShrink: 0, marginTop: '2px' }} />
               <div style={{ fontSize: '12px', color: '#fca5a5', lineHeight: '1.4' }}>
-                <strong>Permanent Action:</strong> Once processed, this action cannot be undone. All reward coins and access to your account will be lost forever.
+                <strong>{t('deletePermanentWarningTitle')}</strong> {t('deletePermanentWarningBody')}
               </div>
             </div>
 
@@ -254,14 +259,14 @@ export default function DeleteAccount() {
               }}
             >
               <Trash2 size={18} />
-              {loading ? 'Submitting Request...' : 'Submit Permanent Deletion Request'}
+              {loading ? t('deleteSubmittingBtn') : t('deleteSubmitBtn')}
             </button>
           </form>
         )}
 
         {/* Footer Support Notice */}
         <div style={{ textAlign: 'center', marginTop: '28px', fontSize: '12px', color: '#777777' }}>
-          Operated by Sanket Shinde • Support Contact:{' '}
+          {t('deleteFooterCredit')}{' '}
           <a href="mailto:shindesanket.vp52@gmail.com" style={{ color: '#D4AF37' }}>
             shindesanket.vp52@gmail.com
           </a>

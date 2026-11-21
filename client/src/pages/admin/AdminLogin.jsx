@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n/I18nContext';
 import { APP_NAME } from '../../config/brand';
 import { Lock, Mail, ArrowRight } from 'lucide-react';
 import vp52Logo from '../../assets/vp52-logo.png';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
@@ -38,8 +39,12 @@ export default function AdminLogin() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '24px'
+      padding: '24px',
+      position: 'relative'
     }}>
+      <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 10 }}>
+        <LanguageSwitcher tone="dark" compact={true} />
+      </div>
       <div style={{
         background: '#111111',
         border: '1px solid rgba(212, 175, 55, 0.25)',

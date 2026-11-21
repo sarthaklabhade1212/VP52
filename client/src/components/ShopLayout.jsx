@@ -105,26 +105,123 @@ export default function ShopLayout() {
             </button>
           </div>
 
-          <div style={{ flex: 1, padding: '20px', background: '#111111', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <button
-              onClick={handleSwitchToCustomerMode}
-              className="btn-secondary"
-              style={{
-                padding: '14px', borderRadius: '12px', fontSize: '14px', fontWeight: 700, justifyContent: 'center'
-              }}
+          <div style={{ flex: 1, padding: '20px', background: '#111111', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto' }}>
+            <NavLink
+              to="/shop/dashboard"
+              onClick={() => setIsMobileMenuOpen(false)}
+              style={({ isActive }) => ({
+                padding: '12px 16px',
+                borderRadius: '12px',
+                color: isActive ? '#F2D675' : '#FFFFFF',
+                background: isActive ? '#1A1A1A' : 'transparent',
+                textDecoration: 'none',
+                fontWeight: 700,
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              })}
             >
-              <RefreshCw size={18} color="#D4AF37" /> {t('switchToCustomer')}
-            </button>
+              <QrCode size={18} color="#D4AF37" /> {t('shopNavDashboard')}
+            </NavLink>
 
-            <button
-              onClick={handleLogout}
-              style={{
-                padding: '14px', borderRadius: '12px', background: '#151515', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)',
-                fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: 'auto', cursor: 'pointer'
-              }}
+            <NavLink
+              to="/shop/products"
+              onClick={() => setIsMobileMenuOpen(false)}
+              style={({ isActive }) => ({
+                padding: '12px 16px',
+                borderRadius: '12px',
+                color: isActive ? '#F2D675' : '#FFFFFF',
+                background: isActive ? '#1A1A1A' : 'transparent',
+                textDecoration: 'none',
+                fontWeight: 700,
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              })}
             >
-              <LogOut size={18} color="#ef4444" /> {t('signOutMerchant')}
-            </button>
+              <ShoppingBag size={18} color="#D4AF37" /> {t('shopNavProducts')}
+            </NavLink>
+
+            <NavLink
+              to="/shop/photos"
+              onClick={() => setIsMobileMenuOpen(false)}
+              style={({ isActive }) => ({
+                padding: '12px 16px',
+                borderRadius: '12px',
+                color: isActive ? '#F2D675' : '#FFFFFF',
+                background: isActive ? '#1A1A1A' : 'transparent',
+                textDecoration: 'none',
+                fontWeight: 700,
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              })}
+            >
+              <Store size={18} color="#D4AF37" /> {t('shopNavPhotos')}
+            </NavLink>
+
+            <NavLink
+              to="/shop/reviews"
+              onClick={() => setIsMobileMenuOpen(false)}
+              style={({ isActive }) => ({
+                padding: '12px 16px',
+                borderRadius: '12px',
+                color: isActive ? '#F2D675' : '#FFFFFF',
+                background: isActive ? '#1A1A1A' : 'transparent',
+                textDecoration: 'none',
+                fontWeight: 700,
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              })}
+            >
+              <ShieldCheck size={18} color="#D4AF37" /> {t('shopNavReviews')}
+            </NavLink>
+
+            <NavLink
+              to="/shop/orders"
+              onClick={() => setIsMobileMenuOpen(false)}
+              style={({ isActive }) => ({
+                padding: '12px 16px',
+                borderRadius: '12px',
+                color: isActive ? '#F2D675' : '#FFFFFF',
+                background: isActive ? '#1A1A1A' : 'transparent',
+                textDecoration: 'none',
+                fontWeight: 700,
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px'
+              })}
+            >
+              <Receipt size={18} color="#D4AF37" /> {t('shopNavOrders')}
+            </NavLink>
+
+            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '16px' }}>
+              <button
+                onClick={handleSwitchToCustomerMode}
+                className="btn-secondary"
+                style={{
+                  padding: '14px', borderRadius: '12px', fontSize: '14px', fontWeight: 700, justifyContent: 'center'
+                }}
+              >
+                <RefreshCw size={18} color="#D4AF37" /> {t('switchToCustomer')}
+              </button>
+
+              <button
+                onClick={handleLogout}
+                style={{
+                  padding: '14px', borderRadius: '12px', background: '#151515', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)',
+                  fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer'
+                }}
+              >
+                <LogOut size={18} color="#ef4444" /> {t('signOutMerchant')}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -144,7 +241,7 @@ export default function ShopLayout() {
         background: '#0B0B0B',
         borderTop: '1px solid rgba(212, 175, 55, 0.2)',
         display: 'flex',
-        justify: 'space-around',
+        justifyContent: 'space-around',
         alignItems: 'center',
         zIndex: 1000,
         boxShadow: '0 -4px 20px rgba(0,0,0,0.8)'

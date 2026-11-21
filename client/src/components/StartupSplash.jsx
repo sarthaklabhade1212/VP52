@@ -1,12 +1,14 @@
 
 import React from 'react';
 import './StartupSplash.css';
+import { useI18n } from '../i18n/I18nContext';
 
 // 1x1 solid black PNG data URI to prevent Chromium WebView from showing default poster
 const BLACK_POSTER =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
 function Splash() {
+  const { t } = useI18n();
   const [gone, setGone] = React.useState(false);
   const [videoFailed, setVideoFailed] = React.useState(false);
   const [showSkip, setShowSkip] = React.useState(false);
@@ -105,7 +107,7 @@ function Splash() {
             pointerEvents: 'none'
           }}
         >
-          Tap anywhere to skip
+          {t('tapAnywhereToSkip')}
         </div>
       )}
     </div>

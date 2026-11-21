@@ -1,4 +1,17 @@
 require('dotenv').config();
+
+// Strict Production Environment Guard
+// The demo seed wipes all tables and populates well-known demo credentials.
+// It is strictly restricted to development/test environments.
+if (process.env.NODE_ENV === 'production') {
+  console.error(
+    '⛔ FATAL: Refusing to run demo seed in production (NODE_ENV=production).\n' +
+    '   Demo accounts and destructive table deletion are strictly prohibited in production.\n' +
+    '   Provision production accounts using: npm run admin -- create <email>'
+  );
+  process.exit(1);
+}
+
 const db = require('./database');
 const bcrypt = require('bcryptjs');
 

@@ -83,6 +83,26 @@ function createAdMobRouter(options = {}) {
 
     const { params, keyId, signedContent, signatureBuffer, rawQuery } = verification;
 
+    // 1b. Acknowledge Google AdMob Console 'Verify URL' test ping (always uses ad_unit=1234567890 after valid ECDSA signature)
+    if (String(params.ad_unit || '').trim() === '1234567890') {
+      logSsvAudit({
+        eventType: 'console_verify_ping',
+        code: 'CONSOLE_VERIFY_PING_ACK',
+        transactionId: params.transaction_id || null,
+        verificationToken: params.custom_data || null,
+        adUnitId: params.ad_unit,
+        keyId,
+        details: 'Verified Google AdMob Console SSV test ping without crediting coins'
+      });
+      return res.status(200).json({
+        success: true,
+        verified: true,
+        coins_credited: 0,
+        code: 'CONSOLE_VERIFY_PING_ACK',
+        message: 'Google AdMob Console SSV verification ping acknowledged'
+      });
+    }
+
     // 2. Strictly validate configured rewarded ad unit
     if (!isExpectedRewardedAdUnit(params.ad_unit, config.rewardedAdUnitId)) {
       logSsvAudit({

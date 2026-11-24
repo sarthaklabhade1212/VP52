@@ -102,53 +102,7 @@ export function resolveRewardedAdUnitForClient(serverAdUnitId) {
   return (env.VITE_ADMOB_REWARDED_AD_UNIT_ID || '').trim() || serverAdUnitId || PRODUCTION_AD_UNITS.REWARDED_AD_UNIT_ID;
 }
 
-// Official Google AdMob sample test native ad creatives for session start
-const SAMPLE_TEST_NATIVE_ADS = [
-  {
-    id: 'admob-test-native-1',
-    headline: 'Google Cloud Platform',
-    advertiser: 'Google LLC',
-    body: 'Build apps faster on Google Cloud. Get $300 in free credits to start your cloud journey today.',
-    callToAction: 'Get Started',
-    iconUrl: 'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?auto=format&fit=crop&w=120&q=80',
-    imageUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80',
-    starRating: 4.8,
-    store: 'Google Play',
-    price: 'Free',
-    sponsoredLabel: 'Sponsored',
-    adUnitId: ADMOB_CONFIG.NATIVE_AD_UNIT_ID
-  },
-  {
-    id: 'admob-test-native-2',
-    headline: 'Android Studio Ladybug',
-    advertiser: 'Android Developers',
-    body: 'The official IDE for Android app development. Built-in Gemini code assistant, layout preview & profilers.',
-    callToAction: 'Download',
-    iconUrl: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=120&q=80',
-    imageUrl: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=600&q=80',
-    starRating: 4.9,
-    store: 'developer.android.com',
-    price: 'Free',
-    sponsoredLabel: 'Sponsored',
-    adUnitId: ADMOB_CONFIG.NATIVE_AD_UNIT_ID
-  },
-  {
-    id: 'admob-test-native-3',
-    headline: 'Google Workspace for Business',
-    advertiser: 'Google Workspace',
-    body: 'Collaborative business tools you love — Gmail, Drive, Meet, and Docs secured with enterprise privacy.',
-    callToAction: 'Try Free',
-    iconUrl: 'https://images.unsplash.com/photo-1573164713988-8665fc963095?auto=format&fit=crop&w=120&q=80',
-    imageUrl: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=600&q=80',
-    starRating: 4.7,
-    store: 'Google',
-    price: 'Free Trial',
-    sponsoredLabel: 'Sponsored',
-    adUnitId: ADMOB_CONFIG.NATIVE_AD_UNIT_ID
-  }
-];
-
-export async function logAdEvent(token, { ad_format = 'native', event_type, ad_unit_id, metadata = {} }, fetchImpl = fetch) {
+export async function logAdEvent(token, { ad_format = 'rewarded', event_type, ad_unit_id, metadata = {} }, fetchImpl = fetch) {
   if (!token) return;
   try {
     await fetchImpl('/api/customer/ad-event', {
@@ -160,7 +114,7 @@ export async function logAdEvent(token, { ad_format = 'native', event_type, ad_u
       body: JSON.stringify({
         ad_format,
         event_type,
-        ad_unit_id: ad_unit_id || ADMOB_CONFIG.NATIVE_AD_UNIT_ID,
+        ad_unit_id: ad_unit_id || ADMOB_CONFIG.REWARDED_AD_UNIT_ID,
         provider: 'Google AdMob',
         metadata: {
           ...metadata,
@@ -171,39 +125,6 @@ export async function logAdEvent(token, { ad_format = 'native', event_type, ad_u
     });
   } catch (err) {
     console.debug('Ad event logging skipped:', err);
-  }
-}
-
-/**
- * Loads up to 3 Google Native Ads for the session-start experience.
- */
-export async function loadSessionStartNativeAds(token, maxCount = 3) {
-  const count = Math.min(maxCount, ADMOB_CONFIG.MAX_SESSION_ADS);
-
-  await logAdEvent(token, {
-    event_type: 'request',
-    metadata: { placement: 'session_start', requested_count: count }
-  });
-
-  try {
-    await new Promise(r => setTimeout(r, 180));
-    const loadedAds = SAMPLE_TEST_NATIVE_ADS.slice(0, count);
-
-    await logAdEvent(token, {
-      event_type: 'loaded',
-      metadata: { placement: 'session_start', loaded_count: loadedAds.length }
-    });
-
-    return loadedAds;
-  } catch (err) {
-    console.warn('Google AdMob native ads load warning:', err.message);
-
-    await logAdEvent(token, {
-      event_type: 'error',
-      metadata: { placement: 'session_start', error_message: err.message }
-    });
-
-    return [];
   }
 }
 
@@ -222,22 +143,24 @@ async function cancelPendingAdSlot(fetchImpl, token, verificationToken, reason) 
 }
 
 /**
- * Executes ONE complete sequential native Android rewarded ad with Server-Side Verification (SSV).
+ * Executes ONE complete sequential native Android rewarded ad with Server-Side Verification (SSV)
+ * to unlock the customer's 6-hour earning session (3 verified ads required).
  *
  * Flow:
  * 1. Checks native platform and single-flight mutex (`inFlightRewardedAd`).
- * 2. Calls backend `POST /api/customer/reward-session/prepare-ad` to check 3-ads-per-6-hour limit
- *    and obtain a 15-minute one-time verification token.
+ * 2. Calls backend `POST /api/customer/reward-session/prepare-ad` to create/reuse a pending
+ *    session and obtain a 15-minute one-time verification token.
  * 3. Calls `AdMob.prepareRewardVideoAd()` with adId `ca-app-pub-4004834464698326/8368553876`,
  *    configurable `isTesting`, and `ssv: { userId, customData }`.
  * 4. Calls `AdMob.showRewardVideoAd()`.
  * 5. On early dismissal / failure: cancels the pending record with 0 coins credited.
- * 6. On ad completion: polls backend SSV verification and fetches fresh wallet balance from the backend.
- *    NEVER credits coins locally in React state without backend verification.
+ * 6. On ad completion: polls backend SSV verification and checks session unlock progress.
+ *    Completing 3/3 ads automatically activates the 6-hour session on the server.
+ *    Zero wallet coins are credited for watching the ads themselves.
  */
 export async function runSequentialRewardedAdFlow({
   token,
-  sessionType = 'reward_session',
+  sessionType = 'vp52_coin_session',
   fetchImpl = fetch,
   isNative = Capacitor.isNativePlatform(),
   pollDelayMs = 1500,
@@ -369,12 +292,12 @@ export async function runSequentialRewardedAdFlow({
         status: 'dismissed_early',
         adSlot: pendingVerification.ad_slot,
         coinsCredited: 0,
-        error: 'Advertisement closed before completion. Watch the full ad to earn 1 Coin.'
+        error: 'Advertisement closed before completion. Watch the full ad to count toward unlocking your 6-hour session.'
       };
     }
 
     // Step 5: User completed ad — poll backend SSV verification
-    // NEVER credit coins locally in React state without backend confirmation
+    // Zero coins credited for ad watch; completing 3/3 ads unlocks 6-hour session
     if (typeof onStatusChange === 'function') onStatusChange('awaiting_ssv');
 
     let verifiedRecord = null;
@@ -401,22 +324,19 @@ export async function runSequentialRewardedAdFlow({
             status: `ssv_${match.status}`,
             adSlot: pendingVerification.ad_slot,
             coinsCredited: 0,
-            error: 'Server verification rejected or expired this ad reward.'
+            error: 'Server verification rejected or expired this ad slot.'
           };
         }
       }
     }
 
-    // Step 6: Fetch fresh customer balance from backend
-    let walletBalance = null;
+    // Step 6: Fetch updated coin session status to determine ads completed & auto-start state
+    let coinSessionData = null;
     try {
-      const walletRes = await fetchImpl('/api/customer/wallet', {
+      const sessRes = await fetchImpl('/api/customer/coin-session', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const walletData = await walletRes.json().catch(() => null);
-      if (walletRes.ok && walletData && walletData.wallet && walletData.wallet.balance !== undefined) {
-        walletBalance = walletData.wallet.balance;
-      }
+      coinSessionData = await sessRes.json().catch(() => null);
     } catch (_) {}
 
     if (!verifiedRecord) {
@@ -426,17 +346,20 @@ export async function runSequentialRewardedAdFlow({
         status: 'ssv_pending',
         adSlot: pendingVerification.ad_slot,
         verificationToken: pendingVerification.verification_token,
-        coinsCredited: 0,
-        walletBalance
+        coinsCredited: 0
       };
     }
+
+    const adsCompleted = coinSessionData?.session?.ads_completed || pendingVerification.ad_slot;
+    const sessionStarted = coinSessionData?.session_state === 'ACTIVE' || (adsCompleted >= 3);
 
     return {
       success: true,
       status: 'verified',
       adSlot: pendingVerification.ad_slot,
-      coinsCredited: ADMOB_CONFIG.REWARD_COINS_PER_AD,
-      walletBalance
+      adsCompleted,
+      sessionStarted,
+      coinsCredited: 0
     };
   } catch (err) {
     if (pendingVerification) {

@@ -349,19 +349,18 @@ function createAdMobRouter(options = {}) {
         }
       } else if (pending.session_type === 'vp52_coin_session') {
         const session = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ? AND user_id = ?').get(pending.session_id, pending.user_id);
-        if (!session || session.status !== 'active') {
+        if (!session) {
           return {
-            status: 400,
-            audit: { eventType: 'rejected', code: 'SESSION_NOT_ACTIVE', userId: pending.user_id },
-            body: { success: false, verified: false, coins_credited: 0, code: 'SESSION_NOT_ACTIVE', error: '6-hour customer coin session is not active' }
+            status: 404,
+            audit: { eventType: 'rejected', code: 'SESSION_NOT_FOUND', userId: pending.user_id },
+            body: { success: false, verified: false, coins_credited: 0, code: 'SESSION_NOT_FOUND', error: '6-hour customer coin session not found' }
           };
         }
-        const sessionEndMs = new Date(session.expires_at).getTime();
-        if (!Number.isFinite(sessionEndMs) || nowMs >= sessionEndMs) {
+        if (session.status === 'completed') {
           return {
             status: 400,
-            audit: { eventType: 'rejected', code: 'SESSION_EXPIRED', userId: pending.user_id },
-            body: { success: false, verified: false, coins_credited: 0, code: 'SESSION_EXPIRED', error: '6-hour customer coin session has expired' }
+            audit: { eventType: 'rejected', code: 'SESSION_ALREADY_COMPLETED', userId: pending.user_id },
+            body: { success: false, verified: false, coins_credited: 0, code: 'SESSION_ALREADY_COMPLETED', error: '6-hour customer coin session is already completed' }
           };
         }
       }
@@ -391,9 +390,13 @@ function createAdMobRouter(options = {}) {
       }
 
       // 4d. Atomically claim pending verification record
+      const isCoinSessionUnlock = pending.session_type === 'vp52_coin_session';
+      const rewardAmt = isCoinSessionUnlock ? 0 : SSV_REWARD_AMOUNT;
+
       const claimRes = db.prepare(`
         UPDATE admob_ssv_verifications
         SET status = 'verified',
+            reward_amount = ?,
             transaction_id = ?,
             key_id = ?,
             ssv_timestamp = ?,
@@ -405,6 +408,7 @@ function createAdMobRouter(options = {}) {
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND status = 'pending'
       `).run(
+        rewardAmt,
         params.transaction_id,
         keyId,
         params.timestamp,
@@ -430,6 +434,88 @@ function createAdMobRouter(options = {}) {
             coins_credited: 0,
             code: 'CLAIM_CONFLICT',
             error: 'Verification record already claimed'
+          }
+        };
+      }
+
+      // 4e. If this ad is for unlocking a 6-hour coin session:
+      // ZERO coins are credited to wallet; instead, increment ads_completed (1 -> 2 -> 3)
+      // and when 3/3 ads are verified, auto-activate the 6-hour earning session immediately!
+      if (isCoinSessionUnlock) {
+        const currentSession = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(pending.session_id);
+        const currentAdsCompleted = currentSession ? (currentSession.ads_completed || 0) : 0;
+        const newAdsCompleted = Math.min(3, currentAdsCompleted + 1);
+
+        let autoStarted = false;
+        const durationSec = (process.env.TEST_SESSION_DURATION_SECONDS && parseInt(process.env.TEST_SESSION_DURATION_SECONDS, 10) > 0)
+          ? parseInt(process.env.TEST_SESSION_DURATION_SECONDS, 10)
+          : 21600;
+
+        if (newAdsCompleted >= 3) {
+          const startTime = new Date(nowMs).toISOString();
+          const endTime = new Date(nowMs + durationSec * 1000).toISOString();
+
+          db.prepare(`
+            UPDATE vp52_coin_sessions
+            SET ads_completed = 3,
+                status = 'active',
+                started_at = ?,
+                expires_at = ?,
+                duration_seconds = ?,
+                coins_earned = 0,
+                reward_claimed = 0
+            WHERE id = ?
+          `).run(startTime, endTime, durationSec, pending.session_id);
+          autoStarted = true;
+        } else {
+          db.prepare(`
+            UPDATE vp52_coin_sessions
+            SET ads_completed = ?,
+                status = 'pending_ads'
+            WHERE id = ?
+          `).run(newAdsCompleted, pending.session_id);
+        }
+
+        db.prepare(`
+          INSERT INTO ad_event_logs (user_id, ad_format, event_type, ad_unit_id, provider, metadata)
+          VALUES (?, 'rewarded', 'session_unlock_ad_verified', ?, 'Google AdMob SSV', ?)
+        `).run(
+          pending.user_id,
+          config.rewardedAdUnitId,
+          JSON.stringify({
+            verification_id: pending.id,
+            ad_slot: pending.ad_slot,
+            session_type: 'vp52_coin_session',
+            session_id: pending.session_id,
+            transaction_id: params.transaction_id,
+            ads_completed: newAdsCompleted,
+            auto_started: autoStarted
+          })
+        );
+
+        return {
+          status: 200,
+          audit: {
+            eventType: 'verified',
+            code: autoStarted ? 'SESSION_AUTO_STARTED' : 'SESSION_AD_VERIFIED',
+            userId: pending.user_id,
+            details: `AdMob SSV verified session unlock slot ${pending.ad_slot}/3 (ads_completed: ${newAdsCompleted}/3, auto_started: ${autoStarted})`
+          },
+          body: {
+            success: true,
+            verified: true,
+            duplicate: false,
+            coins_credited: 0,
+            reward_item: 'session_unlock',
+            ad_slot: pending.ad_slot,
+            session_type: 'vp52_coin_session',
+            session_id: pending.session_id,
+            transaction_id: params.transaction_id,
+            ads_completed: newAdsCompleted,
+            session_started: autoStarted,
+            message: autoStarted
+              ? 'All 3 rewarded ads verified! 6-Hour Earning Session auto-started.'
+              : `Rewarded ad ${newAdsCompleted}/3 verified via SSV.`
           }
         };
       }

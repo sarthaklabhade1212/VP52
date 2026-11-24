@@ -1111,28 +1111,31 @@ router.get('/coin-session', (req, res) => {
     `).all(userId);
 
     if (pendingSession) {
+      const adsCompleted = pendingSession.ads_completed || 0;
+      const canStart = adsCompleted >= 3;
+      const state = canStart ? 'READY_TO_START' : (adsCompleted > 0 ? 'PENDING_ADS' : 'NO_SESSION');
       return res.json({
         success: true,
-        session_state: pendingSession.ads_completed >= 3 ? 'READY_TO_START' : 'READY_TO_START',
-        can_start: true,
+        session_state: state,
+        can_start: canStart,
         session: {
           id: pendingSession.id,
           status: pendingSession.status,
-          ads_completed: pendingSession.ads_completed,
-          can_start: true
+          ads_completed: adsCompleted,
+          can_start: canStart
         },
         session_history: sessionHistory
       });
     }
 
-    // 4. Default: No active session -> customer is eligible to start 6-hour session immediately!
+    // 4. Default: No active session -> customer must complete 3 ads to start
     return res.json({
       success: true,
       session_state: 'NO_SESSION',
-      can_start: true,
+      can_start: false,
       session: {
         ads_completed: 0,
-        can_start: true,
+        can_start: false,
         status: 'no_session'
       },
       session_history: sessionHistory
@@ -1143,57 +1146,13 @@ router.get('/coin-session', (req, res) => {
   }
 });
 
-// POST /api/customer/coin-session/ad-complete — Increment ad completion (0/3 -> 1/3 -> 2/3 -> 3/3)
+// POST /api/customer/coin-session/ad-complete — Fail-closed against client-only simulated completion
 router.post('/coin-session/ad-complete', (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    // Check if active session already running
-    const active = db.prepare(`
-      SELECT id FROM vp52_coin_sessions
-      WHERE user_id = ? AND status = 'active' AND datetime(expires_at) > datetime('now')
-    `).get(userId);
-
-    if (active) {
-      return res.status(400).json({ success: false, error: 'A 6-hour earning session is currently active.' });
-    }
-
-    let session = db.prepare(`
-      SELECT * FROM vp52_coin_sessions
-      WHERE user_id = ? AND status IN ('pending_ads', 'ready_to_start')
-      ORDER BY id DESC LIMIT 1
-    `).get(userId);
-
-    if (!session) {
-      const resIns = db.prepare(`
-        INSERT INTO vp52_coin_sessions (user_id, ads_completed, status)
-        VALUES (?, 1, 'pending_ads')
-      `).run(userId);
-      session = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(resIns.lastInsertRowid);
-    } else {
-      const newCount = Math.min(3, (session.ads_completed || 0) + 1);
-      const newStatus = newCount >= 3 ? 'ready_to_start' : 'pending_ads';
-      db.prepare(`
-        UPDATE vp52_coin_sessions
-        SET ads_completed = ?, status = ?
-        WHERE id = ?
-      `).run(newCount, newStatus, session.id);
-      session.ads_completed = newCount;
-      session.status = newStatus;
-    }
-
-    return res.json({
-      success: true,
-      ads_completed: session.ads_completed,
-      can_start: session.ads_completed >= 3,
-      message: session.ads_completed >= 3
-        ? 'All 3 ads completed! Click "Start 6-Hour Session" to begin.'
-        : `Ad ${session.ads_completed}/3 completed successfully!`
-    });
-  } catch (error) {
-    console.error('Ad completion error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to record ad completion' });
-  }
+  return res.status(403).json({
+    success: false,
+    code: 'REWARDED_AD_VERIFICATION_REQUIRED',
+    error: 'Direct client-side ad completion is forbidden. Rewarded ads must be verified via Google AdMob SSV.'
+  });
 });
 
 // POST /api/customer/coin-session/start — Start 6-Hour Session immediately
@@ -1218,7 +1177,26 @@ router.post('/coin-session/start', (req, res) => {
         }
       }
 
-      // 2. Auto-finalize any expired active unclaimed sessions atomically so wallet,
+      // 2. Check for pending session that has completed all 3 SSV-verified ads
+      const pendingSession = db.prepare(`
+        SELECT * FROM vp52_coin_sessions
+        WHERE user_id = ? AND status IN ('ready_to_start', 'pending_ads')
+        ORDER BY id DESC LIMIT 1
+      `).get(userId);
+
+      if (!pendingSession || (pendingSession.ads_completed || 0) < 3) {
+        return {
+          forbidden: true,
+          status: 403,
+          body: {
+            success: false,
+            code: 'SESSION_UNLOCK_ADS_REQUIRED',
+            error: 'You must complete 3 SSV-verified rewarded ads before starting a 6-hour session.'
+          }
+        };
+      }
+
+      // 3. Auto-finalize any expired active unclaimed sessions atomically so wallet,
       // coin_lots, reward_transactions, and point_ledger stay strictly consistent
       for (const s of activeSessions) {
         const expiresMs = new Date(s.expires_at).getTime();
@@ -1265,32 +1243,18 @@ router.post('/coin-session/start', (req, res) => {
         }
       }
 
-      // 3. Activate new 6-hour session immediately
+      // 4. Activate the 6-hour session immediately
       const durationSec = DURATION_SECONDS;
       const startTime = new Date(now).toISOString();
       const endTime = new Date(now + durationSec * 1000).toISOString();
 
-      let session = db.prepare(`
-        SELECT * FROM vp52_coin_sessions
-        WHERE user_id = ? AND status IN ('ready_to_start', 'pending_ads')
-        ORDER BY id DESC LIMIT 1
-      `).get(userId);
+      db.prepare(`
+        UPDATE vp52_coin_sessions
+        SET started_at = ?, expires_at = ?, duration_seconds = ?, status = 'active', coins_earned = 0, reward_claimed = 0, ads_completed = 3
+        WHERE id = ?
+      `).run(startTime, endTime, durationSec, pendingSession.id);
 
-      if (session) {
-        db.prepare(`
-          UPDATE vp52_coin_sessions
-          SET started_at = ?, expires_at = ?, duration_seconds = ?, status = 'active', coins_earned = 0, reward_claimed = 0, ads_completed = 3
-          WHERE id = ?
-        `).run(startTime, endTime, durationSec, session.id);
-      } else {
-        const resIns = db.prepare(`
-          INSERT INTO vp52_coin_sessions (user_id, started_at, expires_at, duration_seconds, status, ads_completed, coins_earned, reward_claimed)
-          VALUES (?, ?, ?, ?, 'active', 3, 0, 0)
-        `).run(userId, startTime, endTime, durationSec);
-        session = { id: resIns.lastInsertRowid };
-      }
-
-      const startedSession = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(session.id);
+      const startedSession = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(pendingSession.id);
       return {
         existing: false,
         session: startedSession,
@@ -1300,35 +1264,21 @@ router.post('/coin-session/start', (req, res) => {
       };
     })();
 
+    if (startResult.forbidden) {
+      return res.status(startResult.status).json(startResult.body);
+    }
+
     if (startResult.existing) {
-      const admobCfg = getAdMobConfig();
       return res.json({
         success: true,
         message: 'Existing active session returned',
-        session: startResult.session,
-        ad_experience: {
-          enabled: true,
-          max_native_ads: admobCfg.maxAdsPerSession,
-          native_ad_unit_id: admobCfg.nativeAdUnitId,
-          rewarded_ad_unit_id: admobCfg.rewardedAdUnitId,
-          app_id: admobCfg.appId,
-          test_mode: process.env.NODE_ENV !== 'production'
-        }
+        session: startResult.session
       });
     }
 
-    // Record AdMob request diagnostic event (Part 1 & 10)
-    try {
-      db.prepare(`
-        INSERT INTO ad_event_logs (user_id, ad_format, event_type, metadata)
-        VALUES (?, 'native', 'request', ?)
-      `).run(userId, JSON.stringify({ placement: 'session_start', requested_count: 3 }));
-    } catch (_) {}
-
-    const admobCfg = getAdMobConfig();
     return res.json({
       success: true,
-      message: '6-Hour Earning Session started immediately! Earning 100 VP52 Coins.',
+      message: '6-Hour Earning Session started! Earning 100 VP52 Coins.',
       session: {
         id: startResult.session.id,
         started_at: startResult.startTime,
@@ -1337,14 +1287,6 @@ router.post('/coin-session/start', (req, res) => {
         remaining_seconds: startResult.durationSec,
         coins_earned: 0,
         status: 'active'
-      },
-      ad_experience: {
-        enabled: true,
-        max_native_ads: admobCfg.maxAdsPerSession,
-        native_ad_unit_id: admobCfg.nativeAdUnitId,
-        rewarded_ad_unit_id: admobCfg.rewardedAdUnitId,
-        app_id: admobCfg.appId,
-        test_mode: process.env.NODE_ENV !== 'production'
       }
     });
   } catch (error) {
@@ -1706,75 +1648,34 @@ router.get('/redemptions/history', (req, res) => {
 });
 
 // 6. SERVER-CONTROLLED 6-HOUR REWARD SESSION & ADMOB SSV PREPARATION API
+// GET /api/customer/reward-session/status — Compatibility endpoint for session ad status
 router.get('/reward-session/status', (req, res) => {
   try {
     const userId = req.user.id;
     const admobCfg = getAdMobConfig();
-    const durationHours = SESSION_DURATION_HOURS; // 6 hours
-    const adsPerSession = MAX_ADS_PER_SESSION; // 3 rewarded ads per session
-    const coinsPerAd = SSV_REWARD_AMOUNT; // 1 coin per verified rewarded ad
 
-    // Fetch current unexpired 6-hour session (whether ads are in progress or 3/3 completed)
-    let session = db.prepare(`
-      SELECT * FROM reward_sessions
-      WHERE user_id = ? AND datetime(end_time) > datetime('now')
+    const session = db.prepare(`
+      SELECT * FROM vp52_coin_sessions
+      WHERE user_id = ? AND status IN ('active', 'pending_ads', 'ready_to_start')
       ORDER BY id DESC LIMIT 1
     `).get(userId);
 
-    // If no active/unexpired 6-hour session exists, initialize a fresh 6-hour session
-    if (!session) {
-      const todayCountRow = db.prepare(`
-        SELECT COUNT(*) AS count FROM reward_sessions
-        WHERE user_id = ? AND date(start_time) = date('now')
-      `).get(userId);
-      const sessionsToday = todayCountRow ? todayCountRow.count : 0;
-
-      const startTime = new Date().toISOString();
-      const endTime = new Date(Date.now() + durationHours * 3600 * 1000).toISOString();
-      const nextSessionNum = sessionsToday + 1;
-
-      const result = db.prepare(`
-        INSERT INTO reward_sessions (user_id, start_time, end_time, status, session_number_for_day, ads_watched, coins_earned)
-        VALUES (?, ?, ?, 'active', ?, 0, 0)
-      `).run(userId, startTime, endTime, nextSessionNum);
-
-      session = db.prepare('SELECT * FROM reward_sessions WHERE id = ?').get(result.lastInsertRowid);
-    }
-
-    const now = Date.now();
-    const end = new Date(session.end_time).getTime();
-    const remainingSeconds = Math.max(0, Math.floor((end - now) / 1000));
-    const verifiedAdsRow = db.prepare(`
-      SELECT COUNT(*) AS c FROM admob_ssv_verifications
-      WHERE user_id = ? AND session_type = 'reward_session' AND session_id = ? AND status = 'verified'
-    `).get(userId, session.id);
-    const adsWatched = Math.max(session.ads_watched || 0, verifiedAdsRow ? verifiedAdsRow.c : 0);
-    const canWatchAd = adsWatched < adsPerSession && remainingSeconds > 0;
-
-    const verifications = db.prepare(`
-      SELECT id, ad_slot, status, reward_amount, reward_item, expires_at, verified_at, created_at
-      FROM admob_ssv_verifications
-      WHERE user_id = ? AND session_type = 'reward_session' AND session_id = ?
-      ORDER BY ad_slot ASC, id DESC
-    `).all(userId, session.id);
+    const adsCompleted = session ? (session.ads_completed || 0) : 0;
+    const isActive = session ? session.status === 'active' : false;
 
     return res.json({
       success: true,
-      active: remainingSeconds > 0,
+      active: isActive,
       session: {
-        ...session,
-        remaining_seconds: remainingSeconds,
-        ads_watched: adsWatched,
-        max_ads: adsPerSession,
-        coins_earned: session.coins_earned || 0,
-        can_watch_ad: canWatchAd,
-        coins_per_ad: coinsPerAd,
-        reward_item: SSV_REWARD_ITEM,
+        ads_watched: adsCompleted,
+        max_ads: 3,
+        can_watch_ad: !isActive && adsCompleted < 3,
+        coins_per_ad: 0,
+        reward_item: 'session_unlock',
         ssv_required: true,
         admob_app_id: admobCfg.appId,
         rewarded_ad_unit_id: admobCfg.rewardedAdUnitId
-      },
-      verifications
+      }
     });
   } catch (error) {
     console.error('Reward session status error:', error);
@@ -1783,118 +1684,78 @@ router.get('/reward-session/status', (req, res) => {
 });
 
 // Prepare an individual pending AdMob SSV verification record for one of the 3 rewarded ads
-// in the customer's active 6-hour session. Does NOT credit coins.
+// required to unlock/start the customer's 6-hour session. Does NOT credit coins.
 router.post('/reward-session/prepare-ad', (req, res) => {
   try {
     const userId = req.user.id;
     const admobCfg = getAdMobConfig();
-    const requestedSessionType = req.body && req.body.session_type ? String(req.body.session_type).trim() : null;
-
-    if (requestedSessionType && !['reward_session', 'vp52_coin_session'].includes(requestedSessionType)) {
-      return res.status(400).json({ success: false, error: 'Invalid session_type' });
-    }
 
     const prepareTx = db.transaction(() => {
       const nowMs = Date.now();
-      let sessionType = requestedSessionType;
-      let session = null;
-      let sessionEndMs = 0;
 
-      if (sessionType === 'vp52_coin_session') {
-        session = db.prepare(`
-          SELECT * FROM vp52_coin_sessions
-          WHERE user_id = ? AND status = 'active' AND datetime(expires_at) > datetime('now')
-          ORDER BY id DESC LIMIT 1
-        `).get(userId);
-        if (!session) {
-          return {
-            status: 400,
-            body: { success: false, error: 'No active 6-hour coin session found.' }
-          };
-        }
-        sessionEndMs = new Date(session.expires_at).getTime();
-      } else {
-        if (!sessionType) {
-          const activeCoinSession = db.prepare(`
-            SELECT * FROM vp52_coin_sessions
-            WHERE user_id = ? AND status = 'active' AND datetime(expires_at) > datetime('now')
-            ORDER BY id DESC LIMIT 1
-          `).get(userId);
-          const existingRewardSession = db.prepare(`
-            SELECT * FROM reward_sessions
-            WHERE user_id = ? AND datetime(end_time) > datetime('now')
-            ORDER BY id DESC LIMIT 1
-          `).get(userId);
+      // 1. Check if customer already has an active, unexpired 6-hour session
+      const activeSession = db.prepare(`
+        SELECT id, expires_at FROM vp52_coin_sessions
+        WHERE user_id = ? AND status = 'active' AND datetime(expires_at) > datetime('now')
+        ORDER BY id DESC LIMIT 1
+      `).get(userId);
 
-          if (!existingRewardSession && activeCoinSession) {
-            sessionType = 'vp52_coin_session';
-            session = activeCoinSession;
-            sessionEndMs = new Date(activeCoinSession.expires_at).getTime();
-          }
-        }
-
-        if (!session) {
-          sessionType = 'reward_session';
-          session = db.prepare(`
-            SELECT * FROM reward_sessions
-            WHERE user_id = ? AND datetime(end_time) > datetime('now')
-            ORDER BY id DESC LIMIT 1
-          `).get(userId);
-
-          if (!session) {
-            const todayCountRow = db.prepare(`
-              SELECT COUNT(*) AS count FROM reward_sessions
-              WHERE user_id = ? AND date(start_time) = date('now')
-            `).get(userId);
-            const sessionsToday = todayCountRow ? todayCountRow.count : 0;
-            const startTime = new Date(nowMs).toISOString();
-            const endTime = new Date(nowMs + SESSION_DURATION_HOURS * 3600 * 1000).toISOString();
-            const resIns = db.prepare(`
-              INSERT INTO reward_sessions (user_id, start_time, end_time, status, session_number_for_day, ads_watched, coins_earned)
-              VALUES (?, ?, ?, 'active', ?, 0, 0)
-            `).run(userId, startTime, endTime, sessionsToday + 1);
-            session = db.prepare('SELECT * FROM reward_sessions WHERE id = ?').get(resIns.lastInsertRowid);
-          }
-          sessionEndMs = new Date(session.end_time).getTime();
-        }
-      }
-
-      if (!Number.isFinite(sessionEndMs) || sessionEndMs <= nowMs) {
+      if (activeSession) {
         return {
           status: 400,
-          body: { success: false, error: 'Current 6-hour session has expired.' }
+          body: {
+            success: false,
+            code: 'SESSION_ALREADY_ACTIVE',
+            error: 'A 6-hour earning session is already running. Please wait until it completes.'
+          }
         };
       }
 
-      // Mark expired pending verification records cleanly so unused stale slots become free again
+      // 2. Find or create the pending session row
+      let session = db.prepare(`
+        SELECT * FROM vp52_coin_sessions
+        WHERE user_id = ? AND status IN ('pending_ads', 'ready_to_start')
+        ORDER BY id DESC LIMIT 1
+      `).get(userId);
+
+      if (!session) {
+        const resIns = db.prepare(`
+          INSERT INTO vp52_coin_sessions (user_id, ads_completed, status)
+          VALUES (?, 0, 'pending_ads')
+        `).run(userId);
+        session = db.prepare('SELECT * FROM vp52_coin_sessions WHERE id = ?').get(resIns.lastInsertRowid);
+      }
+
+      // 3. Mark expired pending verification records cleanly so unused stale slots become free again
       db.prepare(`
         UPDATE admob_ssv_verifications
         SET status = 'expired', rejection_reason = 'Pending verification expired before callback', updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND session_type = ? AND session_id = ? AND status = 'pending' AND datetime(expires_at) <= datetime('now')
-      `).run(userId, sessionType, session.id);
+        WHERE user_id = ? AND session_type = 'vp52_coin_session' AND session_id = ? AND status = 'pending' AND datetime(expires_at) <= datetime('now')
+      `).run(userId, session.id);
 
+      // 4. Check existing pending and verified slots for this session
       const activeOrVerifiedRows = db.prepare(`
         SELECT ad_slot, status
         FROM admob_ssv_verifications
-        WHERE session_type = ? AND session_id = ? AND status IN ('pending', 'verified')
-      `).all(sessionType, session.id);
+        WHERE session_type = 'vp52_coin_session' AND session_id = ? AND status IN ('pending', 'verified')
+      `).all(session.id);
 
       const verifiedCount = activeOrVerifiedRows.filter(r => r.status === 'verified').length;
-      const recordedAdsWatched = sessionType === 'reward_session' ? (session.ads_watched || 0) : 0;
-      if (verifiedCount >= MAX_ADS_PER_SESSION || recordedAdsWatched >= MAX_ADS_PER_SESSION) {
+      const adsCompleted = session.ads_completed || 0;
+      if (verifiedCount >= 3 || adsCompleted >= 3) {
         return {
           status: 400,
           body: {
             success: false,
             code: 'SESSION_AD_LIMIT_REACHED',
-            error: `Maximum of ${MAX_ADS_PER_SESSION} rewarded ads per 6-hour session has already been reached.`
+            error: 'All 3 rewarded ads have already been completed for this session.'
           }
         };
       }
 
       const occupiedSlots = new Set(activeOrVerifiedRows.map(r => r.ad_slot));
       let nextSlot = null;
-      for (let slot = 1; slot <= MAX_ADS_PER_SESSION; slot++) {
+      for (let slot = 1; slot <= 3; slot++) {
         if (!occupiedSlots.has(slot)) {
           nextSlot = slot;
           break;
@@ -1907,13 +1768,13 @@ router.post('/reward-session/prepare-ad', (req, res) => {
           body: {
             success: false,
             code: 'ALL_SLOTS_ALLOCATED',
-            error: `All ${MAX_ADS_PER_SESSION} rewarded ad slots in this 6-hour session already have pending or verified records.`
+            error: 'An ad verification is already in progress. Please wait or retry.'
           }
         };
       }
 
       const verificationToken = `VP52SSV_${crypto.randomBytes(24).toString('base64url')}`;
-      const pendingExpiresMs = Math.min(nowMs + admobCfg.pendingTtlSeconds * 1000, sessionEndMs);
+      const pendingExpiresMs = nowMs + admobCfg.pendingTtlSeconds * 1000;
       const pendingExpiresAt = new Date(pendingExpiresMs).toISOString();
 
       const ins = db.prepare(`
@@ -1921,17 +1782,14 @@ router.post('/reward-session/prepare-ad', (req, res) => {
           verification_token, user_id, session_type, session_id, ad_slot,
           app_id, ad_unit_id, reward_item, reward_amount, status, expires_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        VALUES (?, ?, 'vp52_coin_session', ?, ?, ?, ?, 'session_unlock', 0, 'pending', ?)
       `).run(
         verificationToken,
         userId,
-        sessionType,
         session.id,
         nextSlot,
         admobCfg.appId,
         admobCfg.rewardedAdUnitId,
-        SSV_REWARD_ITEM,
-        SSV_REWARD_AMOUNT,
         pendingExpiresAt
       );
 
@@ -1944,15 +1802,16 @@ router.post('/reward-session/prepare-ad', (req, res) => {
             verification_token: verificationToken,
             custom_data: verificationToken,
             user_id: String(userId),
-            session_type: sessionType,
+            session_type: 'vp52_coin_session',
             session_id: session.id,
             ad_slot: nextSlot,
-            max_ads: MAX_ADS_PER_SESSION,
+            max_ads: 3,
             ads_verified: verifiedCount,
+            ads_completed: adsCompleted,
             app_id: admobCfg.appId,
             ad_unit_id: admobCfg.rewardedAdUnitId,
-            reward_amount: SSV_REWARD_AMOUNT,
-            reward_item: SSV_REWARD_ITEM,
+            reward_amount: 0,
+            reward_item: 'session_unlock',
             status: 'pending',
             expires_at: pendingExpiresAt
           }

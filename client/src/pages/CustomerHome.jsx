@@ -8,9 +8,8 @@ import CategoryIcon from '../components/CategoryIcon';
 import MerchantMap from '../components/MerchantMap';
 import vp52Logo from '../assets/vp52-logo.png';
 import confetti from 'canvas-confetti';
-import GoogleNativeAdCard from '../components/GoogleNativeAdCard';
 import CustomerScanPayModal from '../components/CustomerScanPayModal';
-import { loadSessionStartNativeAds, runSequentialRewardedAdFlow } from '../services/admobService';
+import { runSequentialRewardedAdFlow } from '../services/admobService';
 import { parseApiResponse, resolveApiErrorMessage, resolveMediaUrl, resolveNetworkErrorMessage } from '../utils/api';
 import { formatNumber } from '../utils/formatters';
 import {
@@ -97,22 +96,18 @@ export default function CustomerHome() {
   }, [user?.profile_photo]);
 
   // VP52 6-Hour Coin Session System State
-  const [sessionState, setSessionState] = useState('NO_SESSION'); // NO_SESSION, ADS_IN_PROGRESS, READY_TO_START, ACTIVE, COMPLETED_PENDING_CLAIM
+  const [sessionState, setSessionState] = useState('NO_SESSION'); // NO_SESSION, PENDING_ADS, READY_TO_START, ACTIVE, COMPLETED_PENDING_CLAIM
   const [coinSession, setCoinSession] = useState(null);
   const [liveEarnedCoins, setLiveEarnedCoins] = useState(0.0);
   const [liveRemainingSeconds, setLiveRemainingSeconds] = useState(0);
-  const [isStartingSession, setIsStartingSession] = useState(false);
   const [isClaimingSession, setIsClaimingSession] = useState(false);
   const [sessionAdMsg, setSessionAdMsg] = useState(null);
-  const [sessionNativeAds, setSessionNativeAds] = useState([]);
-  const [isSessionStartedModalOpen, setIsSessionStartedModalOpen] = useState(false);
   const [sessionHistory, setSessionHistory] = useState([]);
   const [showSessionHistory, setShowSessionHistory] = useState(false);
 
-  // SSV-Verified Rewarded Ads State (1 Coin per verified ad, max 3 per 6h session)
-  const [rewardAdSession, setRewardAdSession] = useState(null);
-  const [isWatchingRewardedAd, setIsWatchingRewardedAd] = useState(false);
-  const [rewardAdStatusMsg, setRewardAdStatusMsg] = useState(null);
+  // 3-Ad Rewarded Session Unlock State
+  const [sessionUnlockMsg, setSessionUnlockMsg] = useState(null);
+  const [isWatchingUnlockAd, setIsWatchingUnlockAd] = useState(false);
 
   // Level Progression State
   const [levelInfo, setLevelInfo] = useState(null);
@@ -201,20 +196,6 @@ export default function CustomerHome() {
       .catch(console.error);
   };
 
-  const fetchRewardSessionStatus = () => {
-    fetch('/api/customer/reward-session/status', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => parseApiResponse(res))
-      .then(parsed => {
-        const d = parsed.data;
-        if (parsed.ok && d && d.success && d.session) {
-          setRewardAdSession(d.session);
-        }
-      })
-      .catch(console.error);
-  };
-
   const fetchLevelInfo = () => {
     fetch('/api/customer/level', {
       headers: { Authorization: `Bearer ${token}` }
@@ -256,30 +237,49 @@ export default function CustomerHome() {
     return () => clearInterval(interval);
   }, [coinSession?.id, coinSession?.started_at, coinSession?.expires_at, coinSession?.status]);
 
-  const handleStartSession = async () => {
-    setIsStartingSession(true);
-    setSessionAdMsg(null);
+  const handleWatchUnlockAd = async () => {
+    if (isWatchingUnlockAd || !token) return;
+    setIsWatchingUnlockAd(true);
+    setSessionUnlockMsg(null);
     try {
-      const res = await fetch('/api/customer/coin-session/start', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      const result = await runSequentialRewardedAdFlow({
+        token,
+        sessionType: 'vp52_coin_session'
       });
-      const parsed = await parseApiResponse(res);
-      const data = parsed.data;
-      if (parsed.ok && data && data.success) {
-        setSessionAdMsg(data.message);
+
+      if (result && result.status === 'verified') {
+        if (result.sessionStarted) {
+          setSessionUnlockMsg({ type: 'success', text: t('all3AdsVerifiedAutoStarting') });
+        } else {
+          setSessionUnlockMsg({
+            type: 'success',
+            text: t('adVerifiedSuccessStep', { slot: result.adSlot || (coinSession?.ads_completed || 0) + 1 })
+          });
+        }
         fetchCoinSession();
-        // Load up to 3 Google Native Ads for post-start confirmation screen
-        const ads = await loadSessionStartNativeAds(token, 3);
-        setSessionNativeAds(ads || []);
-        setIsSessionStartedModalOpen(true);
+      } else if (result && result.status === 'ssv_pending') {
+        setSessionUnlockMsg({ type: 'pending', text: t('rewardedAdPendingSsvNotice') });
+        fetchCoinSession();
+      } else if (result && result.status === 'dismissed_early') {
+        setSessionUnlockMsg({
+          type: 'error',
+          text: t('adDismissedEarlyWarning')
+        });
+        fetchCoinSession();
       } else {
-        setSessionAdMsg(resolveApiErrorMessage(parsed, t, 'serverErrorFallback'));
+        setSessionUnlockMsg({
+          type: 'error',
+          text: (result && result.error) || t('serverErrorFallback')
+        });
+        fetchCoinSession();
       }
     } catch (err) {
-      setSessionAdMsg(resolveNetworkErrorMessage(err, t, 'networkErrorGeneric'));
+      setSessionUnlockMsg({
+        type: 'error',
+        text: resolveNetworkErrorMessage(err, t, 'networkErrorGeneric')
+      });
     } finally {
-      setIsStartingSession(false);
+      setIsWatchingUnlockAd(false);
     }
   };
 
@@ -298,7 +298,6 @@ export default function CustomerHome() {
         setSessionAdMsg(data.message);
         if (data.newBalance !== undefined) updateUserBalance(data.newBalance);
         fetchCoinSession();
-        fetchRewardSessionStatus();
         fetchShops();
         fetchLevelInfo();
       } else {
@@ -308,44 +307,6 @@ export default function CustomerHome() {
       setSessionAdMsg(resolveNetworkErrorMessage(err, t, 'networkErrorGeneric'));
     } finally {
       setIsClaimingSession(false);
-    }
-  };
-
-  const handleWatchRewardedAd = async () => {
-    if (isWatchingRewardedAd || !token) return;
-    setIsWatchingRewardedAd(true);
-    setRewardAdStatusMsg(null);
-    try {
-      const result = await runSequentialRewardedAdFlow({
-        token,
-        sessionType: 'reward_session'
-      });
-
-      if (result && result.status === 'verified') {
-        if (result.walletBalance !== null && result.walletBalance !== undefined) {
-          updateUserBalance(result.walletBalance);
-        }
-        setRewardAdStatusMsg({ type: 'success', text: t('rewardedAdVerifiedSuccess') });
-        fetchRewardSessionStatus();
-        fetchLevelInfo();
-      } else if (result && result.status === 'ssv_pending') {
-        // Delayed SSV callback: NEVER grant speculative coins on client
-        setRewardAdStatusMsg({ type: 'pending', text: t('rewardedAdPendingSsvNotice') });
-        fetchRewardSessionStatus();
-      } else {
-        setRewardAdStatusMsg({
-          type: 'error',
-          text: (result && result.error) || t('serverErrorFallback')
-        });
-        fetchRewardSessionStatus();
-      }
-    } catch (err) {
-      setRewardAdStatusMsg({
-        type: 'error',
-        text: resolveNetworkErrorMessage(err, t, 'networkErrorGeneric')
-      });
-    } finally {
-      setIsWatchingRewardedAd(false);
     }
   };
 
@@ -418,12 +379,6 @@ export default function CustomerHome() {
     initLocation();
     return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-    if (token) {
-      fetchRewardSessionStatus();
-    }
-  }, [token]);
 
   useEffect(() => {
     if (token) {
@@ -616,29 +571,134 @@ export default function CustomerHome() {
           </div>
         )}
 
-        {/* STATE 1, 2, 3: SESSION START (UNLIMITED 6-HOUR SESSIONS, IMMEDIATE ACTIVATION) */}
-        {(sessionState === 'NO_SESSION' || sessionState === 'ADS_IN_PROGRESS' || sessionState === 'READY_TO_START') && (
+        {/* STATE 1, 2, 3: 3-AD REWARDED SESSION UNLOCK FLOW */}
+        {(sessionState === 'NO_SESSION' || sessionState === 'PENDING_ADS' || sessionState === 'READY_TO_START' || sessionState === 'ADS_IN_PROGRESS') && (
           <div>
             <div style={{ background: '#151515', border: '1px solid rgba(212, 175, 55, 0.25)', padding: '18px', borderRadius: '16px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '14px', fontWeight: 800, color: '#FFFFFF' }}>{t('unlimited6HrSessions')}</span>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#10B981', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 8px', borderRadius: '6px' }}>
-                  {t('availableNowBadge')}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '14px', fontWeight: 800, color: '#FFFFFF' }}>{t('unlockSessionTitle')}</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: '#F2D675', background: 'rgba(212, 175, 55, 0.15)', padding: '4px 10px', borderRadius: '8px', border: '1px solid rgba(212, 175, 55, 0.25)' }}>
+                  {t('adsUnlockProgress', { completed: coinSession?.ads_completed || 0 })}
                 </span>
               </div>
-              <p style={{ fontSize: '12px', color: '#B8B8B8', margin: '0 0 14px 0', lineHeight: 1.4 }}>
-                {t('start6HrSessionDesc')}
+
+              <p style={{ fontSize: '12px', color: '#B8B8B8', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+                {t('unlockSessionDesc')}
               </p>
 
-              <button
-                type="button"
-                onClick={handleStartSession}
-                disabled={isStartingSession}
-                className="btn-primary pulse-glow"
-                style={{ width: '100%', padding: '16px', fontSize: '16px', borderRadius: '14px', justifyContent: 'center' }}
-              >
-                🚀 {isStartingSession ? t('startingSessionBtn') : t('start6HrSessionBtn')}
-              </button>
+              {/* 3-Step Ad Progress Indicator */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                {[1, 2, 3].map((slot) => {
+                  const completedCount = coinSession?.ads_completed || 0;
+                  const isDone = completedCount >= slot;
+                  const isCurrent = completedCount + 1 === slot;
+                  return (
+                    <div
+                      key={slot}
+                      style={{
+                        flex: 1,
+                        padding: '10px 8px',
+                        borderRadius: '12px',
+                        background: isDone
+                          ? 'rgba(16, 185, 129, 0.12)'
+                          : isCurrent
+                          ? 'rgba(212, 175, 55, 0.12)'
+                          : '#1A1A1A',
+                        border: `1px solid ${
+                          isDone
+                            ? 'rgba(16, 185, 129, 0.4)'
+                            : isCurrent
+                            ? 'rgba(212, 175, 55, 0.4)'
+                            : 'rgba(255, 255, 255, 0.08)'
+                        }`,
+                        textAlign: 'center',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '4px' }}>
+                        {isDone ? (
+                          <CheckCircle2 size={16} color="#10B981" aria-hidden="true" />
+                        ) : (
+                          <PlayCircle size={16} color={isCurrent ? '#F2D675' : '#666666'} aria-hidden="true" />
+                        )}
+                        <span style={{ fontSize: '12px', fontWeight: 800, color: isDone ? '#10B981' : isCurrent ? '#F2D675' : '#888888' }}>
+                          {t('adSlotLabel', { slot })}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: isDone ? '#10B981' : isCurrent ? '#D4AF37' : '#666666' }}>
+                        {isDone ? t('adVerifiedBadge') : isCurrent ? t('adNextBadge') : t('adPendingBadge')}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Status / Error Message */}
+              {sessionUnlockMsg && (
+                <div style={{
+                  marginBottom: '14px',
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  background: sessionUnlockMsg.type === 'success'
+                    ? 'rgba(16, 185, 129, 0.14)'
+                    : sessionUnlockMsg.type === 'error'
+                    ? 'rgba(239, 68, 68, 0.14)'
+                    : 'rgba(212, 175, 55, 0.14)',
+                  border: `1px solid ${
+                    sessionUnlockMsg.type === 'success'
+                      ? 'rgba(16, 185, 129, 0.35)'
+                      : sessionUnlockMsg.type === 'error'
+                      ? 'rgba(239, 68, 68, 0.35)'
+                      : 'rgba(212, 175, 55, 0.35)'
+                  }`,
+                  color: sessionUnlockMsg.type === 'success'
+                    ? '#10B981'
+                    : sessionUnlockMsg.type === 'error'
+                    ? '#FCA5A5'
+                    : '#F2D675',
+                  textAlign: 'center'
+                }}>
+                  {sessionUnlockMsg.text}
+                </div>
+              )}
+
+              {/* Action Button */}
+              {(coinSession?.ads_completed || 0) >= 3 ? (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '14px',
+                  borderRadius: '14px',
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  color: '#10B981',
+                  fontSize: '14px',
+                  fontWeight: 800
+                }}>
+                  <CheckCircle2 size={18} aria-hidden="true" />
+                  {t('all3AdsVerifiedAutoStarting')}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleWatchUnlockAd}
+                  disabled={isWatchingUnlockAd}
+                  className="btn-primary pulse-glow"
+                  style={{ width: '100%', padding: '16px', fontSize: '15px', borderRadius: '14px', justifyContent: 'center' }}
+                >
+                  <PlayCircle size={18} aria-hidden="true" />
+                  {isWatchingUnlockAd
+                    ? t('watchingAndVerifyingAd')
+                    : t('watchAdToUnlockBtn', {
+                        slot: (coinSession?.ads_completed || 0) + 1,
+                        completed: coinSession?.ads_completed || 0
+                      })}
+                </button>
+              )}
             </div>
 
             {/* Session History Toggle Button */}
@@ -750,197 +810,7 @@ export default function CustomerHome() {
             </div>
           </div>
         )}
-
-        {/* BONUS REWARDED ADS (SSV VERIFIED - 1 COIN PER VERIFIED AD, MAX 3 PER 6H SESSION) */}
-        {rewardAdSession && (
-          <div style={{
-            marginTop: '16px',
-            background: '#151515',
-            border: '1px solid rgba(212, 175, 55, 0.25)',
-            borderRadius: '16px',
-            padding: '16px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '14px', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <PlayCircle size={16} color="#F2D675" aria-hidden="true" />
-                {t('rewardedAdsSectionTitle')}
-              </span>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: '#F2D675' }}>
-                {t('rewardedAdsProgress', { verified: rewardAdSession.ads_watched || 0 })}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-              {[1, 2, 3].map((slot) => {
-                const done = (rewardAdSession.ads_watched || 0) >= slot;
-                return (
-                  <div
-                    key={slot}
-                    style={{
-                      flex: 1,
-                      height: '6px',
-                      borderRadius: '4px',
-                      background: done ? 'linear-gradient(90deg, #C9A227 0%, #F2D675 100%)' : '#262626'
-                    }}
-                  />
-                );
-              })}
-            </div>
-
-            {rewardAdStatusMsg && (
-              <div style={{
-                marginBottom: '12px',
-                padding: '10px 12px',
-                borderRadius: '10px',
-                fontSize: '12px',
-                fontWeight: 700,
-                background: rewardAdStatusMsg.type === 'success'
-                  ? 'rgba(16, 185, 129, 0.14)'
-                  : rewardAdStatusMsg.type === 'error'
-                  ? 'rgba(239, 68, 68, 0.14)'
-                  : 'rgba(212, 175, 55, 0.14)',
-                border: `1px solid ${
-                  rewardAdStatusMsg.type === 'success'
-                    ? 'rgba(16, 185, 129, 0.35)'
-                    : rewardAdStatusMsg.type === 'error'
-                    ? 'rgba(239, 68, 68, 0.35)'
-                    : 'rgba(212, 175, 55, 0.35)'
-                }`,
-                color: rewardAdStatusMsg.type === 'success'
-                  ? '#10B981'
-                  : rewardAdStatusMsg.type === 'error'
-                  ? '#FCA5A5'
-                  : '#F2D675'
-              }}>
-                {rewardAdStatusMsg.text}
-              </div>
-            )}
-
-            {(rewardAdSession.ads_watched || 0) >= (rewardAdSession.max_ads || 3) ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                padding: '10px',
-                borderRadius: '12px',
-                background: 'rgba(16, 185, 129, 0.12)',
-                border: '1px solid rgba(16, 185, 129, 0.28)',
-                color: '#10B981',
-                fontSize: '12px',
-                fontWeight: 800
-              }}>
-                <CheckCircle2 size={15} aria-hidden="true" />
-                {t('rewardedAdsAllCompleted')}
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleWatchRewardedAd}
-                disabled={isWatchingRewardedAd || !rewardAdSession.can_watch_ad}
-                className="btn-secondary"
-                style={{ width: '100%', padding: '12px 14px', fontSize: '14px', borderRadius: '12px', justifyContent: 'center' }}
-              >
-                <PlayCircle size={16} aria-hidden="true" />
-                {isWatchingRewardedAd ? t('watchingRewardedAdBtn') : t('watchRewardedAdBtn')}
-              </button>
-            )}
-          </div>
-        )}
       </div>
-
-      {/* GOOGLE ADMOB SESSION-START NATIVE ADS MODAL (PARTS 1, 3, 11) */}
-      {isSessionStartedModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('sessionActivatedTitle')}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.88)',
-            backdropFilter: 'blur(8px)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px'
-          }}
-        >
-          <div
-            style={{
-              background: '#0D0D0D',
-              border: '1px solid #D4AF37',
-              borderRadius: '24px',
-              padding: '24px',
-              width: '100%',
-              maxWidth: '440px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              position: 'relative',
-              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)'
-            }}
-          >
-            <div style={{ textAlign: 'center', marginBottom: '18px' }}>
-              <div
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '50%',
-                  background: 'rgba(212, 175, 55, 0.15)',
-                  border: '1px solid #D4AF37',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 12px auto'
-                }}
-              >
-                <Sparkles size={28} color="#F2D675" aria-hidden="true" />
-              </div>
-              <h3 style={{ fontSize: '20px', fontWeight: 900, color: '#FFFFFF', margin: '0 0 4px 0' }}>
-                {t('sessionActivatedTitle')}
-              </h3>
-              <p style={{ fontSize: '12px', color: '#B8B8B8', margin: 0 }}>
-                {t('sessionActivatedDesc')}
-              </p>
-            </div>
-
-            {/* Up to 3 Google Native Ads Placements (AdMob) */}
-            {sessionNativeAds && sessionNativeAds.length > 0 && (
-              <div style={{ marginBottom: '18px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#D4AF37', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {t('sponsoredByGoogle')}
-                  </span>
-                  <span style={{ fontSize: '10px', color: '#777777' }}>{t('googleMobileAds')}</span>
-                </div>
-                {sessionNativeAds.map((ad, idx) => (
-                  <GoogleNativeAdCard key={ad.id || idx} ad={ad} token={token} index={idx} />
-                ))}
-              </div>
-            )}
-
-            {/* Non-blocking Dismiss / Continue Button */}
-            <button
-              type="button"
-              onClick={() => setIsSessionStartedModalOpen(false)}
-              style={{
-                width: '100%',
-                background: 'linear-gradient(135deg, #F2D675 0%, #D4AF37 100%)',
-                color: '#050505',
-                border: 'none',
-                borderRadius: '14px',
-                padding: '14px',
-                fontSize: '15px',
-                fontWeight: 800,
-                cursor: 'pointer'
-              }}
-            >
-              {t('continueToVp52')}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* LOCATION OPT-IN / STATUS CARD */}
       {locationStatus === 'granted' ? (

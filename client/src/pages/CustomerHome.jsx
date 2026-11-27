@@ -47,26 +47,7 @@ export default function CustomerHome() {
   const { user, token, updateUserBalance } = useAuth();
   const { t, locale, translateCategory, translateSubcategory } = useI18n();
 
-  const translateTierName = (name) => {
-    if (!name) return '';
-    if (name === 'Max Level') return t('maxLevelLabel');
-    const key = `tier_${name}`;
-    const translated = t(key);
-    return translated === key ? name : translated;
-  };
-
-  const translateLevelBenefit = (benefits) => {
-    if (!benefits) return '';
-    const map = {
-      'Standard Membership & Access to local shop offers': 'levelBenefitBasic',
-      'Silver Member & Up to 7% Max Discount Cap': 'levelBenefitSilver',
-      'Gold Member & Up to 10% Max Discount Cap': 'levelBenefitGold',
-      'Diamond Member & Up to 15% Max Discount Cap': 'levelBenefitDiamond',
-      'Platinum VIP Member & Up to 20% Max Discount Cap': 'levelBenefitPlatinum'
-    };
-    const key = map[benefits];
-    return key ? t(key) : benefits;
-  };
+  const [walletData, setWalletData] = useState(null);
 
   const translateSessionStatus = (status) => {
     const k = `sessionStatus_${String(status || '').toLowerCase()}`;
@@ -108,9 +89,6 @@ export default function CustomerHome() {
   // 3-Ad Rewarded Session Unlock State
   const [sessionUnlockMsg, setSessionUnlockMsg] = useState(null);
   const [isWatchingUnlockAd, setIsWatchingUnlockAd] = useState(false);
-
-  // Level Progression State
-  const [levelInfo, setLevelInfo] = useState(null);
 
   // GPS Location & Permission State
   const [userLocation, setUserLocation] = useState(null);
@@ -196,14 +174,19 @@ export default function CustomerHome() {
       .catch(console.error);
   };
 
-  const fetchLevelInfo = () => {
-    fetch('/api/customer/level', {
+  const fetchWalletData = () => {
+    fetch('/api/customer/wallet', {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => parseApiResponse(res))
       .then(parsed => {
         const d = parsed.data;
-        if (parsed.ok && d && d.success) setLevelInfo(d);
+        if (parsed.ok && d && d.success && d.wallet) {
+          setWalletData(d.wallet);
+          if (updateUserBalance && d.wallet.balance !== undefined) {
+            updateUserBalance(d.wallet.balance);
+          }
+        }
       })
       .catch(console.error);
   };
@@ -299,7 +282,7 @@ export default function CustomerHome() {
         if (data.newBalance !== undefined) updateUserBalance(data.newBalance);
         fetchCoinSession();
         fetchShops();
-        fetchLevelInfo();
+        fetchWalletData();
       } else {
         setSessionAdMsg(resolveApiErrorMessage(parsed, t, 'serverErrorFallback'));
       }
@@ -384,7 +367,7 @@ export default function CustomerHome() {
     if (token) {
       fetchShops();
       fetchCoinSession();
-      fetchLevelInfo();
+      fetchWalletData();
     }
   }, [token, search, category, selectedSubcategory, minRating, openNow, sortBy, distanceFilter, userLocation]);
 
@@ -481,27 +464,16 @@ export default function CustomerHome() {
             <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#B8B8B8', display: 'block' }}>
               {t('availableCoins')}
             </span>
-            <span style={{ fontSize: '28px', fontWeight: 800, color: '#F2D675' }}>
-              🪙 {user ? formatNumber(user.balance || 0, locale) : 0} <span style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF' }}>{t('coinsUnit')}</span>
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px', marginTop: '4px' }}>
+              <span style={{ fontSize: '20px', fontWeight: 800, color: '#F2D675' }}>
+                🪙 {formatNumber(walletData?.normal_coins ?? user?.normal_coins ?? user?.balance ?? 0, locale)} <span style={{ fontSize: '12px', fontWeight: 700, color: '#FFFFFF' }}>{t('normalCoinsLabel') || 'Normal'}</span>
+              </span>
+              <span style={{ fontSize: '15px', fontWeight: 800, color: '#D4AF37' }}>
+                👑 {formatNumber(walletData?.vip_coins ?? user?.vip_coins ?? 0, locale)} <span style={{ fontSize: '11px', fontWeight: 700, color: '#B8B8B8' }}>{t('vipCoinsLabel') || 'VIP'}</span>
+              </span>
+            </div>
           </div>
         </div>
-
-        {/* Level Progression & Discount Cap Card */}
-        {levelInfo && (
-          <div style={{ background: '#111111', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '16px', padding: '14px 18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 800, marginBottom: '6px', color: '#FFFFFF', gap: '8px', flexWrap: 'wrap' }}>
-              <span>🏆 {t('tierLabel')}: <span style={{ color: '#F2D675' }}>{translateTierName(levelInfo.currentLevel)}</span> ({t('capPercentLabel', { cap: levelInfo.discountCapPercent })})</span>
-              <span style={{ color: '#B8B8B8' }}>{t('nextTierLabel')}: {translateTierName(levelInfo.nextLevel)} ({(levelInfo.lifetimeCoins || 0).toLocaleString(locale)}/{(levelInfo.minForNext || 0).toLocaleString(locale)} {t('coinsUnit')})</span>
-            </div>
-            <div style={{ width: '100%', height: '8px', background: '#1A1A1A', borderRadius: '4px', overflow: 'hidden', marginBottom: '6px' }}>
-              <div style={{ width: `${levelInfo.progressPercent}%`, height: '100%', background: 'linear-gradient(90deg, #C9A227 0%, #F2D675 100%)', transition: 'width 0.3s ease' }} />
-            </div>
-            <div style={{ fontSize: '11px', color: '#B8B8B8' }}>
-              {translateLevelBenefit(levelInfo.benefits)} • {t('lifetimeCoinsLabel')}: <strong style={{ color: '#F2D675' }}>{(levelInfo.lifetimeCoins || 0).toLocaleString(locale)}</strong>
-            </div>
-          </div>
-        )}
 
         {/* Scan & Pay Coins at Merchant Button */}
         <button

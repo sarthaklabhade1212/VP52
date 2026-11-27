@@ -158,6 +158,17 @@ if (process.env.STAGING_ENFORCE_HTTPS === 'true' && fs.existsSync(stagingCertPat
   });
 }
 
+// VP52 365-Day Automatic Coin Conversion Engine (Runs every 1 hour)
+const { reconcileCoinConversions } = require('./utils/coinConversion');
+const conversionInterval = setInterval(() => {
+  try {
+    reconcileCoinConversions();
+  } catch (e) {
+    console.error('[coin-conversion] Periodic reconciliation error:', e.message);
+  }
+}, 60 * 60 * 1000);
+if (conversionInterval.unref) conversionInterval.unref();
+
 let isShuttingDown = false;
 function gracefulShutdown(signal) {
   if (isShuttingDown) return;

@@ -88,7 +88,7 @@ router.get('/customer/me', authenticateToken, requireRole('customer'), (req, res
     if (!user || user.status !== 'active') {
       return res.status(403).json({ success: false, error: 'User unavailable or suspended' });
     }
-    const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
+    const wallet = db.prepare('SELECT balance, normal_coins, vip_coins, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
     const isProfileCompleted = Boolean(user.profile_completed && user.phone);
     return res.json({
       success: true,
@@ -98,6 +98,8 @@ router.get('/customer/me', authenticateToken, requireRole('customer'), (req, res
         profile_photo: user.profile_photo || null,
         profile_completed: isProfileCompleted,
         balance: wallet ? wallet.balance : 0,
+        normal_coins: wallet ? (wallet.normal_coins != null ? wallet.normal_coins : wallet.balance) : 0,
+        vip_coins: wallet ? (wallet.vip_coins || 0) : 0,
         total_earned: wallet ? wallet.total_earned : 0,
         total_redeemed: wallet ? wallet.total_redeemed : 0
       }
@@ -259,7 +261,7 @@ router.post('/customer/login', authLimiter, (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid email or password' });
     }
 
-    const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
+    const wallet = db.prepare('SELECT balance, normal_coins, vip_coins, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
     const isProfileCompleted = Boolean(user.profile_completed && user.phone);
 
     const token = jwt.sign(
@@ -282,6 +284,8 @@ router.post('/customer/login', authLimiter, (req, res) => {
         profile_photo: user.profile_photo || null,
         profile_completed: isProfileCompleted,
         balance: wallet ? wallet.balance : 0,
+        normal_coins: wallet ? (wallet.normal_coins != null ? wallet.normal_coins : wallet.balance) : 0,
+        vip_coins: wallet ? (wallet.vip_coins || 0) : 0,
         total_earned: wallet ? wallet.total_earned : 0,
         total_redeemed: wallet ? wallet.total_redeemed : 0
       }
@@ -398,7 +402,7 @@ router.post('/customer/google', authLimiter, async (req, res) => {
     }
 
     // 3) Issue customer JWT + user shape
-    const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
+    const wallet = db.prepare('SELECT balance, normal_coins, vip_coins, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
     const token = jwt.sign(
       { id: user.id, email: user.email, phone: user.phone, role: 'customer', profile_completed: isProfileCompleted ? 1 : 0 },
       JWT_SECRET,
@@ -419,6 +423,8 @@ router.post('/customer/google', authLimiter, async (req, res) => {
         profile_photo: user.profile_photo || googlePhoto || null,
         profile_completed: isProfileCompleted,
         balance: wallet ? wallet.balance : 0,
+        normal_coins: wallet ? (wallet.normal_coins != null ? wallet.normal_coins : wallet.balance) : 0,
+        vip_coins: wallet ? (wallet.vip_coins || 0) : 0,
         total_earned: wallet ? wallet.total_earned : 0,
         total_redeemed: wallet ? wallet.total_redeemed : 0
       }
@@ -498,7 +504,7 @@ router.post('/customer/complete-profile', authenticateToken, requireRole('custom
     `).run(full_name.trim(), phoneResult.normalized, passwordHash, userId);
 
     const updatedUser = db.prepare('SELECT id, full_name, email, phone, status, profile_photo, profile_completed, created_at FROM users WHERE id = ?').get(userId);
-    const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(userId);
+    const wallet = db.prepare('SELECT balance, normal_coins, vip_coins, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(userId);
 
     // Issue updated token reflecting profile_completed: 1
     const token = jwt.sign(
@@ -521,6 +527,8 @@ router.post('/customer/complete-profile', authenticateToken, requireRole('custom
         profile_photo: updatedUser.profile_photo || null,
         profile_completed: true,
         balance: wallet ? wallet.balance : 0,
+        normal_coins: wallet ? (wallet.normal_coins != null ? wallet.normal_coins : wallet.balance) : 0,
+        vip_coins: wallet ? (wallet.vip_coins || 0) : 0,
         total_earned: wallet ? wallet.total_earned : 0,
         total_redeemed: wallet ? wallet.total_redeemed : 0
       }
@@ -1229,7 +1237,7 @@ router.get('/me', authenticateToken, (req, res) => {
       if (!user || user.status !== 'active') {
         return res.status(403).json({ success: false, error: 'User unavailable or suspended' });
       }
-      const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
+      const wallet = db.prepare('SELECT balance, normal_coins, vip_coins, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(user.id);
       const isProfileCompleted = Boolean(user.profile_completed && user.phone);
       return res.json({
         success: true,
@@ -1239,6 +1247,8 @@ router.get('/me', authenticateToken, (req, res) => {
           profile_photo: user.profile_photo || null,
           profile_completed: isProfileCompleted,
           balance: wallet ? wallet.balance : 0,
+          normal_coins: wallet ? (wallet.normal_coins != null ? wallet.normal_coins : wallet.balance) : 0,
+          vip_coins: wallet ? (wallet.vip_coins || 0) : 0,
           total_earned: wallet ? wallet.total_earned : 0,
           total_redeemed: wallet ? wallet.total_redeemed : 0
         }

@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const db = require('../db/database');
+const { reconcileCoinConversions } = require('../utils/coinConversion');
 const {
   authenticateToken,
   requireRole,
@@ -488,20 +489,11 @@ router.post('/create-bill', (req, res) => {
       return res.status(404).json({ success: false, error: `Customer "${customer_identifier}" not found. Verify email/phone.` });
     }
 
-    // 1. Calculate Customer Level & Discount Cap %
-    const walletRow = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(customer.id) || { balance: 0, total_earned: 0 };
-    const lifetimePoints = walletRow.total_earned;
-
-    const levels = db.prepare('SELECT * FROM reward_levels ORDER BY min_points ASC').all();
-    let currentLevel = 'Basic';
-    let discountCapPercent = 5;
-
-    for (const lvl of levels) {
-      if (lifetimePoints >= lvl.min_points) {
-        currentLevel = lvl.level_name;
-        discountCapPercent = lvl.discount_cap_percent || 5;
-      }
-    }
+    // 1. Reconcile 365-day coin conversions
+    reconcileCoinConversions(customer.id);
+    const walletRow = db.prepare('SELECT balance, normal_coins, vip_coins, total_earned FROM wallets WHERE user_id = ?').get(customer.id) || { balance: 0, normal_coins: 0, vip_coins: 0, total_earned: 0 };
+    const currentLevel = 'Standard';
+    const discountCapPercent = 100;
 
     // 2. Calculate Bill Totals Server-Side
     let totalAmount = 0;
@@ -528,21 +520,14 @@ router.post('/create-bill', (req, res) => {
       };
     });
 
-    // 3. Level Discount Cap Calculation
-    const maxAllowedDiscountINR = Math.floor(eligibleAmount * (discountCapPercent / 100));
-
-    // Auto-expire lots before calculating available coins
-    db.prepare(`
-      UPDATE coin_lots
-      SET status = 'EXPIRED'
-      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND datetime(expires_at) <= datetime('now')
-    `).run(customer.id);
+    // 3. Discount Calculation: No 5% membership tier restriction (1 Coin = ₹1 up to eligible amount)
+    const maxAllowedDiscountINR = eligibleAmount;
 
     const activeCoinsRow = db.prepare(`
       SELECT SUM(coins_remaining) AS active_coins FROM coin_lots
-      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND datetime(expires_at) > datetime('now')
+      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED')
     `).get(customer.id);
-    const availableCoins = activeCoinsRow && activeCoinsRow.active_coins !== null ? activeCoinsRow.active_coins : walletRow.balance;
+    const availableCoins = activeCoinsRow && activeCoinsRow.active_coins !== null ? activeCoinsRow.active_coins : (walletRow.normal_coins != null ? walletRow.normal_coins : walletRow.balance);
 
     const coinsToRedeem = Math.min(availableCoins, maxAllowedDiscountINR);
     const discountAmountINR = coinsToRedeem; // 1 Coin = ₹1
@@ -697,6 +682,22 @@ router.post('/offers', (req, res) => {
       VALUES (?, ?, ?, 0, ?, ?, ?, ?)
     `).run(shopId, title.trim(), parseInt(discount_percent), parseInt(max_discount_inr), valid_until, parseInt(usage_limit) || 100, status || 'active');
 
+    try {
+      db.prepare(`
+        INSERT INTO merchant_advertisements (
+          id, merchant_id, title, description, banner_image_url, offer_type,
+          approval_status, is_active, start_date, expiry_date
+        )
+        VALUES (?, ?, ?, ?, '', 'promotional_offer', 'approved', 1, CURRENT_TIMESTAMP, ?)
+      `).run(
+        result.lastInsertRowid,
+        shopId,
+        title.trim(),
+        `${discount_percent}% Discount (Up to ₹${max_discount_inr})`,
+        valid_until
+      );
+    } catch (_) {}
+
     return res.status(201).json({ success: true, message: 'Merchant offer created successfully!', offerId: result.lastInsertRowid });
   } catch (error) {
     console.error('Create merchant offer error:', error);
@@ -715,6 +716,25 @@ router.put('/offers/:id', (req, res) => {
       WHERE id = ? AND shop_id = ?
     `).run(title.trim(), parseInt(discount_percent), parseInt(max_discount_inr), valid_until, parseInt(usage_limit) || 100, status || 'active', req.params.id, shopId);
 
+    try {
+      db.prepare(`
+        UPDATE merchant_advertisements
+        SET title = ?,
+            description = ?,
+            expiry_date = ?,
+            is_active = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND merchant_id = ?
+      `).run(
+        title.trim(),
+        `${discount_percent}% Discount (Up to ₹${max_discount_inr})`,
+        valid_until,
+        status === 'active' ? 1 : 0,
+        req.params.id,
+        shopId
+      );
+    } catch (_) {}
+
     return res.json({ success: true, message: 'Merchant offer updated successfully!' });
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to update merchant offer' });
@@ -725,6 +745,9 @@ router.delete('/offers/:id', (req, res) => {
   try {
     const shopId = req.user.shop_id || req.user.id;
     db.prepare('DELETE FROM offers WHERE id = ? AND shop_id = ?').run(req.params.id, shopId);
+    try {
+      db.prepare('DELETE FROM merchant_advertisements WHERE id = ? AND merchant_id = ?').run(req.params.id, shopId);
+    } catch (_) {}
     return res.json({ success: true, message: 'Offer deleted successfully' });
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to delete offer' });

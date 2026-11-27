@@ -89,6 +89,8 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER UNIQUE NOT NULL,
       balance INTEGER DEFAULT 0,
+      normal_coins INTEGER DEFAULT 0,
+      vip_coins REAL DEFAULT 0,
       total_earned INTEGER DEFAULT 0,
       total_redeemed INTEGER DEFAULT 0,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -209,12 +211,15 @@ function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       transaction_id TEXT,
-      source TEXT NOT NULL, -- AD_REWARD, STORE_PURCHASE, BONUS
+      source TEXT NOT NULL, -- AD_REWARD, STORE_PURCHASE, BONUS, CONVERSION
       coins_earned INTEGER NOT NULL,
       coins_remaining INTEGER NOT NULL,
+      coin_type TEXT DEFAULT 'NORMAL', -- NORMAL | VIP
+      convert_at DATETIME,
+      tier TEXT DEFAULT 'Normal',
       earned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       expires_at DATETIME NOT NULL,
-      status TEXT DEFAULT 'ACTIVE', -- ACTIVE, PARTIALLY_USED, USED, EXPIRED
+      status TEXT DEFAULT 'ACTIVE', -- ACTIVE, PARTIALLY_USED, USED, EXPIRED, CONVERTED
       FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
     );
 
@@ -993,6 +998,111 @@ function initDatabase() {
         updateQr.run(uniqueQr, s.id);
       }
     }
+
+    // ============================================================
+    // VP52 Two-Coin System (Normal Coins & VIP Coins, 10,000 : 1, 365 Days)
+    // ============================================================
+    const walletCols = db.prepare("PRAGMA table_info(wallets)").all().map(c => c.name);
+    if (!walletCols.includes('normal_coins')) {
+      db.exec("ALTER TABLE wallets ADD COLUMN normal_coins INTEGER DEFAULT 0;");
+    }
+    if (!walletCols.includes('vip_coins')) {
+      db.exec("ALTER TABLE wallets ADD COLUMN vip_coins REAL DEFAULT 0;");
+    }
+
+    const coinLotCols = db.prepare("PRAGMA table_info(coin_lots)").all().map(c => c.name);
+    if (!coinLotCols.includes('coin_type')) {
+      db.exec("ALTER TABLE coin_lots ADD COLUMN coin_type TEXT DEFAULT 'NORMAL';");
+    }
+    if (!coinLotCols.includes('convert_at')) {
+      db.exec("ALTER TABLE coin_lots ADD COLUMN convert_at DATETIME;");
+    }
+
+    // Migrate existing coin_lots to two-coin schema
+    db.exec(`
+      UPDATE coin_lots
+      SET coin_type = 'VIP'
+      WHERE (tier = 'VIP' OR tier = '12') AND coin_type != 'VIP';
+
+      UPDATE coin_lots
+      SET coin_type = 'NORMAL',
+          tier = 'Normal',
+          convert_at = COALESCE(convert_at, datetime(earned_at, '+365 days')),
+          expires_at = COALESCE(expires_at, datetime(earned_at, '+365 days'))
+      WHERE (coin_type IS NULL OR coin_type = 'NORMAL') AND (tier != 'VIP' OR tier IS NULL);
+    `);
+
+    // Synchronize wallets: preserve balance 100% into normal_coins & vip_coins
+    db.exec(`
+      UPDATE wallets
+      SET normal_coins = CASE
+        WHEN (normal_coins IS NULL OR normal_coins = 0) AND balance > 0 THEN balance
+        WHEN normal_coins IS NULL THEN 0
+        ELSE normal_coins
+      END,
+      vip_coins = COALESCE(vip_coins, 0)
+      WHERE normal_coins IS NULL OR normal_coins = 0;
+    `);
+
+    // ============================================================
+    // Merchant Advertisements Table & Clean Migration
+    // ============================================================
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS merchant_advertisements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        merchant_id INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        description TEXT,
+        banner_image_url TEXT,
+        offer_type TEXT DEFAULT 'promotional_offer', -- 'banner' | 'promotional_offer'
+        approval_status TEXT DEFAULT 'approved', -- 'pending' | 'approved' | 'rejected'
+        rejection_reason TEXT,
+        is_active INTEGER DEFAULT 1,
+        start_date DATETIME,
+        expiry_date DATETIME,
+        impressions_count INTEGER DEFAULT 0,
+        clicks_count INTEGER DEFAULT 0,
+        redemptions_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_merch_ads_merchant ON merchant_advertisements(merchant_id);
+      CREATE INDEX IF NOT EXISTS idx_merch_ads_status ON merchant_advertisements(approval_status, is_active);
+      CREATE INDEX IF NOT EXISTS idx_merch_ads_dates ON merchant_advertisements(start_date, expiry_date);
+    `);
+
+    try {
+      db.exec(`
+        INSERT OR IGNORE INTO merchant_advertisements (
+          id, merchant_id, title, description, banner_image_url, offer_type,
+          approval_status, is_active, start_date, expiry_date,
+          impressions_count, clicks_count, redemptions_count, created_at, updated_at
+        )
+        SELECT
+          o.id,
+          o.shop_id,
+          o.title,
+          COALESCE(o.terms_and_conditions, o.title || ' - ' || o.discount_percent || '% Off'),
+          COALESCE(o.banner_url, ''),
+          CASE WHEN o.discount_percent = 0 THEN 'banner' ELSE 'promotional_offer' END,
+          CASE WHEN o.status = 'rejected' THEN 'rejected' WHEN o.status = 'pending' THEN 'pending' ELSE 'approved' END,
+          CASE WHEN o.status = 'active' THEN 1 ELSE 0 END,
+          COALESCE(o.start_date, o.created_at),
+          COALESCE(o.end_date, o.valid_until),
+          0, 0, 0,
+          o.created_at,
+          o.created_at
+        FROM offers o
+        WHERE NOT EXISTS (SELECT 1 FROM merchant_advertisements ma WHERE ma.id = o.id);
+      `);
+    } catch (_) {}
+
+    // Run coin conversion check
+    try {
+      const { reconcileCoinConversions } = require('../utils/coinConversion');
+      reconcileCoinConversions(null, db);
+    } catch (_) {}
   } catch (e) {
     console.error('Migration error:', e.message);
   }

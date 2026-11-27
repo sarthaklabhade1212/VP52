@@ -170,13 +170,24 @@ export default function CustomerWallet() {
       {/* Main Balance Hero Card */}
       <div className="wallet-gradient-card" style={{ marginBottom: '24px', padding: '24px', borderRadius: '24px' }}>
         <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#B8B8B8', fontWeight: 700 }}>
-          {t('totalCoinBalanceAllTiers')}
+          {t('twoCoinBalanceTitle') || 'VP52 Two-Coin Balance'}
         </span>
-        <h1 style={{ fontSize: '38px', fontWeight: 800, marginTop: '4px', lineHeight: 1, marginBottom: '6px', color: '#F2D675' }}>
-          🪙 {(wallet.available_coins || wallet.balance || 0).toLocaleString(locale)} <span style={{ fontSize: '18px', fontWeight: 600, color: '#FFFFFF' }}>{t('vp52CoinsUnit')}</span>
-        </h1>
-        <div style={{ fontSize: '13px', color: '#D4AF37', fontWeight: 600, marginBottom: '18px' }}>
-          {t('activeLoyaltyCoins')}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '14px', marginTop: '6px', marginBottom: '12px' }}>
+          <div>
+            <div style={{ fontSize: '12px', color: '#B8B8B8', fontWeight: 700 }}>🪙 {t('normalCoins') || 'Normal Coins'} (1 Coin = ₹1)</div>
+            <div style={{ fontSize: '32px', fontWeight: 900, color: '#F2D675', lineHeight: 1.1 }}>
+              {(wallet.normal_coins != null ? wallet.normal_coins : (wallet.available_coins || wallet.balance || 0)).toLocaleString(locale)}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', color: '#B8B8B8', fontWeight: 700 }}>👑 {t('vipCoins') || 'VIP Coins'} (10,000 : 1)</div>
+            <div style={{ fontSize: '32px', fontWeight: 900, color: '#D4AF37', lineHeight: 1.1 }}>
+              {(wallet.vip_coins || 0).toLocaleString(locale)}
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: '12px', color: '#D4AF37', fontWeight: 600, marginBottom: '16px' }}>
+          {t('twoCoinSystemTagline') || '10,000 Normal Coins = 1 VIP Coin • 365-Day Automatic Conversion'}
         </div>
 
         {/* 2x2 Grid Summary */}
@@ -289,15 +300,15 @@ export default function CustomerWallet() {
         </button>
 
         <button
-          onClick={() => setActiveTab('tiers')}
+          onClick={() => setActiveTab('two_coins')}
           style={{
-            flex: '1 0 auto', padding: '10px 14px', border: activeTab === 'tiers' ? '1px solid #D4AF37' : 'none', borderRadius: '8px', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
-            background: activeTab === 'tiers' ? '#111111' : 'transparent',
-            color: activeTab === 'tiers' ? '#F2D675' : '#777777',
+            flex: '1 0 auto', padding: '10px 14px', border: (activeTab === 'two_coins' || activeTab === 'tiers') ? '1px solid #D4AF37' : 'none', borderRadius: '8px', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+            background: (activeTab === 'two_coins' || activeTab === 'tiers') ? '#111111' : 'transparent',
+            color: (activeTab === 'two_coins' || activeTab === 'tiers') ? '#F2D675' : '#777777',
             whiteSpace: 'nowrap'
           }}
         >
-          {t('tabTiersBreakdown')}
+          {t('tabTwoCoinSystem') || 'Two-Coin System'}
         </button>
 
         <button
@@ -466,66 +477,177 @@ export default function CustomerWallet() {
         )
       )}
 
-      {/* TAB CONTENT: 12 COIN TIERS HIERARCHY */}
-      {activeTab === 'tiers' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {TIER_METADATA.map((tierMeta) => {
-            const summary = tierSummary.find(s => s.tier === tierMeta.name) || { coins: 0, unit_value: 1, lots_count: 0 };
-            const tierDisplay = t(`tier_${tierMeta.name}`) !== `tier_${tierMeta.name}` ? t(`tier_${tierMeta.name}`) : tierMeta.name;
-            return (
-              <div
-                key={tierMeta.name}
-                style={{
-                  background: '#111111',
-                  borderRadius: '16px',
-                  padding: '16px 20px',
-                  border: summary.coins > 0 ? `1px solid ${tierMeta.color}` : '1px solid rgba(212, 175, 55, 0.15)',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{
-                    width: '44px',
-                    height: '44px',
-                    borderRadius: '12px',
-                    background: '#151515',
-                    border: `1px solid ${tierMeta.color}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '18px'
-                  }}>
-                    🪙
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
-                        {tierDisplay} {t('coinsUnit')}
-                      </h4>
-                      <span style={{ fontSize: '10px', background: '#151515', border: `1px solid ${tierMeta.color}`, color: tierMeta.color, padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                        {t(tierMeta.badgeKey)}
-                      </span>
-                    </div>
-                    <span style={{ fontSize: '11px', color: '#B8B8B8', marginTop: '2px', display: 'block' }}>
-                      {summary.lots_count} {t('activeBatchesLabel')}
-                    </span>
-                  </div>
-                </div>
+      {/* TAB CONTENT: TWO-COIN SYSTEM & 365-DAY CONVERSION */}
+      {(activeTab === 'two_coins' || activeTab === 'tiers') && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Conversion Rule Explanation Banner */}
+          <div style={{
+            background: 'linear-gradient(135deg, #151515 0%, #1A1608 100%)',
+            borderRadius: '16px',
+            padding: '18px 20px',
+            border: '1px solid rgba(212, 175, 55, 0.35)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <Sparkles size={20} color="#F2D675" />
+              <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#F2D675', margin: 0 }}>
+                {t('coinConversionTitle') || 'Automatic 365-Day VIP Coin Conversion'}
+              </h3>
+            </div>
+            <p style={{ fontSize: '13px', color: '#D4D4D4', lineHeight: 1.5, margin: '0 0 10px 0' }}>
+              {t('coinConversionDesc') || 'VP52 operates on a strict Two-Coin System. Every 10,000 Normal Coins automatically convert into 1 VIP Coin exactly 365 days after they are earned.'}
+            </p>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px', fontWeight: 700 }}>
+              <span style={{ background: '#111111', padding: '6px 12px', borderRadius: '8px', border: '1px solid rgba(212, 175, 55, 0.25)', color: '#FFFFFF' }}>
+                ⚖️ 10,000 Normal Coins = 1 VIP Coin
+              </span>
+              <span style={{ background: '#111111', padding: '6px 12px', borderRadius: '8px', border: '1px solid rgba(212, 175, 55, 0.25)', color: '#F2D675' }}>
+                ⏳ 365 Days Conversion Period
+              </span>
+            </div>
+          </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '18px', fontWeight: 800, color: summary.coins > 0 ? tierMeta.color : '#666666' }}>
-                    {summary.coins.toLocaleString(locale)}
-                  </span>
-                  <span style={{ fontSize: '11px', color: '#B8B8B8', display: 'block' }}>
-                    {t('coinsUnit')}
+          {/* Coin 1: Normal Coins Card */}
+          <div style={{
+            background: '#111111',
+            borderRadius: '16px',
+            padding: '20px',
+            border: '1px solid rgba(212, 175, 55, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '14px',
+                background: '#151515',
+                border: '1px solid #F2D675',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '22px'
+              }}>
+                🪙
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h4 style={{ fontSize: '17px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
+                    {t('normalCoins') || 'Normal Coins'}
+                  </h4>
+                  <span style={{ fontSize: '10px', background: '#181818', border: '1px solid #F2D675', color: '#F2D675', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                    1 Coin = ₹1
                   </span>
                 </div>
+                <span style={{ fontSize: '12px', color: '#B8B8B8', marginTop: '4px', display: 'block' }}>
+                  {t('normalCoinsDesc') || 'Instant merchant discounts • Converts to VIP Coins after 365 days'}
+                </span>
               </div>
-            );
-          })}
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '22px', fontWeight: 900, color: '#F2D675' }}>
+                {(wallet.normal_coins != null ? wallet.normal_coins : (wallet.available_coins || wallet.balance || 0)).toLocaleString(locale)}
+              </div>
+              <span style={{ fontSize: '11px', color: '#888888', fontWeight: 600 }}>Normal</span>
+            </div>
+          </div>
+
+          {/* Coin 2: VIP Coins Card */}
+          <div style={{
+            background: '#111111',
+            borderRadius: '16px',
+            padding: '20px',
+            border: '1px solid rgba(212, 175, 55, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '14px',
+                background: '#151515',
+                border: '1px solid #D4AF37',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '22px'
+              }}>
+                👑
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h4 style={{ fontSize: '17px', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
+                    {t('vipCoins') || 'VIP Coins'}
+                  </h4>
+                  <span style={{ fontSize: '10px', background: '#181818', border: '1px solid #D4AF37', color: '#D4AF37', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                    PRESTIGE
+                  </span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#B8B8B8', marginTop: '4px', display: 'block' }}>
+                  {t('vipCoinsDesc') || 'Long-term loyalty holdings from matured Normal Coins'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '22px', fontWeight: 900, color: '#D4AF37' }}>
+                {(wallet.vip_coins || 0).toLocaleString(locale)}
+              </div>
+              <span style={{ fontSize: '11px', color: '#888888', fontWeight: 600 }}>VIP</span>
+            </div>
+          </div>
+
+          {/* Upcoming Conversions Schedule */}
+          <div style={{
+            background: '#0E0E0E',
+            borderRadius: '16px',
+            padding: '18px',
+            border: '1px solid rgba(212, 175, 55, 0.2)'
+          }}>
+            <h4 style={{ fontSize: '14px', fontWeight: 800, color: '#FFFFFF', margin: '0 0 12px 0' }}>
+              📅 {t('upcomingConversionsTitle') || 'Upcoming 365-Day Conversions'}
+            </h4>
+            {activeLots.filter(l => l.coin_type !== 'VIP').length === 0 ? (
+              <div style={{ fontSize: '12px', color: '#777777', textAlign: 'center', padding: '16px' }}>
+                {t('noUpcomingConversions') || 'No active Normal Coins currently scheduled for conversion.'}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {activeLots.filter(l => l.coin_type !== 'VIP').slice(0, 5).map(lot => {
+                  const daysRemaining = Math.max(0, Math.ceil((new Date(lot.convert_at || lot.expires_at).getTime() - Date.now()) / (86400 * 1000)));
+                  return (
+                    <div key={lot.id} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '10px 14px',
+                      background: '#141414',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(212, 175, 55, 0.1)'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 700, color: '#F2D675' }}>
+                          🪙 {lot.coins_remaining.toLocaleString(locale)} Normal Coins
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#888888' }}>
+                          Earned on: {new Date(lot.earned_at).toLocaleDateString(locale)}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: '11px', color: '#D4AF37', fontWeight: 700, background: '#1A1A1A', padding: '3px 8px', borderRadius: '6px' }}>
+                          {daysRemaining > 0 ? `${daysRemaining} days left` : 'Ready to convert'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -538,24 +660,24 @@ export default function CustomerWallet() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {activeLots.map((lot) => {
-              const lotTierName = lot.tier || 'Bronze';
-              const lotTierDisplay = t(`tier_${lotTierName}`) !== `tier_${lotTierName}` ? t(`tier_${lotTierName}`) : lotTierName;
+              const isVip = lot.coin_type === 'VIP' || lot.tier === 'VIP';
+              const coinTypeName = isVip ? (t('vipCoins') || 'VIP Coins') : (t('normalCoins') || 'Normal Coins');
               return (
-              <div key={lot.id} style={{ background: '#111111', borderRadius: '14px', padding: '14px 16px', border: '1px solid rgba(212, 175, 55, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div key={lot.id} style={{ background: '#111111', borderRadius: '14px', padding: '14px 16px', border: isVip ? '1px solid rgba(212, 175, 55, 0.4)' : '1px solid rgba(212, 175, 55, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <strong style={{ color: '#F2D675', fontSize: '15px' }}>🪙 {lot.coins_remaining} {lotTierDisplay} {t('coinsUnit')}</strong>
+                    <strong style={{ color: isVip ? '#D4AF37' : '#F2D675', fontSize: '15px' }}>{isVip ? '👑' : '🪙'} {lot.coins_remaining} {coinTypeName}</strong>
                     <span style={{ fontSize: '10px', background: '#151515', border: '1px solid rgba(212, 175, 55, 0.3)', color: '#D4AF37', padding: '1px 6px', borderRadius: '4px' }}>
                       {lot.source}
                     </span>
                   </div>
                   <span style={{ fontSize: '11px', color: '#B8B8B8', marginTop: '4px', display: 'block' }}>
-                    {t('earnedOnDateLabel')} {new Date(lot.earned_at).toLocaleDateString(locale)} • {t('nextTransitionLabel')}: {new Date(lot.next_transition_at || lot.expires_at).toLocaleDateString(locale)}
+                    {t('earnedOnDateLabel')} {new Date(lot.earned_at).toLocaleDateString(locale)} • {isVip ? 'Permanent VIP' : `Converts at: ${new Date(lot.convert_at || lot.expires_at).toLocaleDateString(locale)}`}
                   </span>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <span style={{ fontSize: '11px', color: '#F2D675', background: '#151515', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(212, 175, 55, 0.2)' }}>
-                    {t('inDaysLabel', { days: Math.max(1, Math.floor((lot.hours_until_transition || 720) / 24)) })}
+                    {isVip ? 'VIP Tier' : `${Math.max(0, Math.ceil((new Date(lot.convert_at || lot.expires_at).getTime() - Date.now()) / (86400 * 1000)))} days left`}
                   </span>
                 </div>
               </div>

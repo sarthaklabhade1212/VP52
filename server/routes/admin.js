@@ -392,7 +392,7 @@ router.get('/customers', requirePermission('customers:view'), (req, res) => {
   try {
     const customers = db.prepare(`
       SELECT u.id, u.full_name, u.email, u.phone, u.status, u.created_at,
-             w.balance, w.total_earned, w.total_redeemed
+             w.balance, w.normal_coins, w.vip_coins, w.total_earned, w.total_redeemed
       FROM users u
       LEFT JOIN wallets w ON u.id = w.user_id
       ORDER BY u.id DESC
@@ -409,7 +409,7 @@ router.get('/customers/:id', requirePermission('customers:view'), (req, res) => 
   try {
     const customer = db.prepare(`
       SELECT u.id, u.full_name, u.email, u.phone, u.status, u.created_at,
-             w.balance, w.total_earned, w.total_redeemed
+             w.balance, w.normal_coins, w.vip_coins, w.total_earned, w.total_redeemed
       FROM users u
       LEFT JOIN wallets w ON u.id = w.user_id
       WHERE u.id = ?
@@ -1421,6 +1421,8 @@ router.get('/dashboard-stats', requirePermission('dashboard:view'), (req, res) =
     const totalQrRedemptions = db.prepare('SELECT COUNT(*) AS c FROM coin_transfers').get().c;
     const successfulTransactions = db.prepare("SELECT COUNT(*) AS c FROM coin_transfers WHERE status = 'COMPLETED'").get().c;
     const failedTransactions = db.prepare("SELECT COUNT(*) AS c FROM coin_redemption_requests WHERE status IN ('cancelled', 'expired')").get().c;
+    const merchantAdsCount = db.prepare('SELECT COUNT(*) AS c FROM merchant_advertisements').get().c;
+    const pendingMerchantAds = db.prepare("SELECT COUNT(*) AS c FROM merchant_advertisements WHERE approval_status = 'pending'").get().c;
 
     // Charts Data
     const customerRegistrations = db.prepare(`
@@ -1501,7 +1503,9 @@ router.get('/dashboard-stats', requirePermission('dashboard:view'), (req, res) =
         merchantCoinsBalance,
         totalQrRedemptions,
         successfulTransactions,
-        failedTransactions
+        failedTransactions,
+        merchantAdsCount,
+        pendingMerchantAds
       },
       charts: {
         customerRegistrations,
@@ -1981,9 +1985,11 @@ router.delete('/subcategories/:subId', requirePermission('categories:manage'), (
 
 router.get('/coins/overview', requirePermission('coins:view'), (req, res) => {
   try {
-    const issued = db.prepare("SELECT COALESCE(SUM(points), 0) AS total FROM point_ledger WHERE type IN ('earned', 'admin_adjustment') AND points > 0").get().total;
+    const issued = db.prepare("SELECT COALESCE(SUM(points), 0) AS total FROM point_ledger WHERE type IN ('earned', 'admin_adjustment', 'AD_REWARD') AND points > 0").get().total;
     const redeemed = db.prepare("SELECT COALESCE(SUM(points_deducted), 0) AS total FROM redemptions").get().total;
     const outstanding = db.prepare("SELECT COALESCE(SUM(balance), 0) AS total FROM wallets").get().total;
+    const normalOutstanding = db.prepare("SELECT COALESCE(SUM(normal_coins), 0) AS total FROM wallets").get().total;
+    const vipOutstanding = db.prepare("SELECT COALESCE(SUM(vip_coins), 0) AS total FROM wallets").get().total;
     const expired = db.prepare("SELECT COALESCE(SUM(coins_earned - coins_remaining), 0) AS total FROM coin_lots WHERE status = 'EXPIRED'").get().total;
     const activeLots = db.prepare("SELECT COUNT(*) AS total FROM coin_lots WHERE status IN ('ACTIVE', 'PARTIALLY_USED') AND coins_remaining > 0").get().total;
     const totalSessions = db.prepare("SELECT COUNT(*) AS total FROM vp52_coin_sessions").get().total;
@@ -1994,6 +2000,8 @@ router.get('/coins/overview', requirePermission('coins:view'), (req, res) => {
         total_issued: issued,
         total_redeemed: redeemed,
         outstanding_liability: outstanding,
+        normal_coins_outstanding: normalOutstanding || outstanding,
+        vip_coins_outstanding: vipOutstanding,
         total_expired: expired,
         active_lots_count: activeLots,
         total_sessions: totalSessions
@@ -3052,6 +3060,190 @@ router.delete('/advertisements/:id', requirePermission('advertisements:manage'),
     recordAdminActivity(req.user.id, 'delete_advertisement', 'Advertisement Management', ad.id, req, { oldValue: ad });
 
     return res.json({ success: true, message: 'Advertisement banner deleted.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ----------------------------------------------------------------------------
+// MERCHANT ADVERTISEMENTS MANAGEMENT (BANNERS & PROMOTIONAL OFFERS)
+// ----------------------------------------------------------------------------
+
+router.get('/merchant-ads', requirePermission('advertisements:view'), (req, res) => {
+  try {
+    const { status, type, search } = req.query;
+    let query = `
+      SELECT ma.*,
+             s.name AS merchant_name, s.shop_code AS merchant_shop_code, s.category AS merchant_category,
+             s.email AS merchant_email, s.phone AS merchant_phone
+      FROM merchant_advertisements ma
+      LEFT JOIN shops s ON ma.merchant_id = s.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (status && status !== 'all') {
+      if (status === 'pending' || status === 'approved' || status === 'rejected') {
+        query += ' AND ma.approval_status = ?';
+        params.push(status);
+      } else if (status === 'active') {
+        query += ' AND ma.is_active = 1 AND ma.approval_status = "approved" AND (ma.expiry_date IS NULL OR datetime(ma.expiry_date) > datetime("now"))';
+      } else if (status === 'expired') {
+        query += ' AND ma.expiry_date IS NOT NULL AND datetime(ma.expiry_date) <= datetime("now")';
+      }
+    }
+
+    if (type && type !== 'all') {
+      query += ' AND ma.offer_type = ?';
+      params.push(type);
+    }
+
+    if (search && search.trim()) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      query += ' AND (LOWER(ma.title) LIKE ? OR LOWER(s.name) LIKE ? OR LOWER(s.shop_code) LIKE ?)';
+      params.push(term, term, term);
+    }
+
+    query += ' ORDER BY ma.created_at DESC';
+
+    const ads = db.prepare(query).all(...params);
+    const formatted = ads.map(a => {
+      const impressions = a.impressions_count || 0;
+      const clicks = a.clicks_count || 0;
+      const ctr = impressions > 0 ? ((clicks / impressions) * 100).toFixed(1) + '%' : '0.0%';
+      return {
+        ...a,
+        ctr,
+        is_expired: a.expiry_date ? new Date(a.expiry_date).getTime() <= Date.now() : false
+      };
+    });
+
+    return res.json({ success: true, advertisements: formatted });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/merchant-ads/:id', requirePermission('advertisements:manage'), (req, res) => {
+  try {
+    const ad = db.prepare('SELECT * FROM merchant_advertisements WHERE id = ?').get(req.params.id);
+    if (!ad) return res.status(404).json({ success: false, error: 'Merchant advertisement not found' });
+
+    const { title, description, banner_image_url, offer_type, start_date, expiry_date, is_active } = req.body;
+
+    db.prepare(`
+      UPDATE merchant_advertisements
+      SET title = COALESCE(?, title),
+          description = COALESCE(?, description),
+          banner_image_url = COALESCE(?, banner_image_url),
+          offer_type = COALESCE(?, offer_type),
+          start_date = COALESCE(?, start_date),
+          expiry_date = COALESCE(?, expiry_date),
+          is_active = COALESCE(?, is_active),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      title !== undefined ? title.trim() : null,
+      description !== undefined ? description.trim() : null,
+      banner_image_url !== undefined ? banner_image_url.trim() : null,
+      offer_type || null,
+      start_date || null,
+      expiry_date || null,
+      is_active !== undefined ? Number(is_active) : null,
+      ad.id
+    );
+
+    recordAdminActivity(req.user.id, 'update_merchant_ad', 'Merchant Advertisements', ad.id, req, {
+      oldValue: ad,
+      newValue: { title, offer_type, start_date, expiry_date, is_active }
+    });
+
+    return res.json({ success: true, message: 'Merchant advertisement updated successfully' });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/merchant-ads/:id/approval', requirePermission('advertisements:manage'), (req, res) => {
+  try {
+    const ad = db.prepare('SELECT * FROM merchant_advertisements WHERE id = ?').get(req.params.id);
+    if (!ad) return res.status(404).json({ success: false, error: 'Merchant advertisement not found' });
+
+    const { approval_status, rejection_reason } = req.body;
+    if (!['approved', 'rejected', 'pending'].includes(approval_status)) {
+      return res.status(400).json({ success: false, error: 'Invalid approval status' });
+    }
+
+    db.prepare(`
+      UPDATE merchant_advertisements
+      SET approval_status = ?,
+          rejection_reason = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(approval_status, rejection_reason || null, ad.id);
+
+    try {
+      db.prepare(`
+        UPDATE offers
+        SET status = ?
+        WHERE id = ?
+      `).run(approval_status === 'approved' ? 'active' : approval_status, ad.id);
+    } catch (_) {}
+
+    recordAdminActivity(req.user.id, `ad_approval_${approval_status}`, 'Merchant Advertisements', ad.id, req, {
+      oldValue: { approval_status: ad.approval_status },
+      newValue: { approval_status, rejection_reason }
+    });
+
+    return res.json({ success: true, message: `Advertisement ${approval_status} successfully.` });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/merchant-ads/:id/status', requirePermission('advertisements:manage'), (req, res) => {
+  try {
+    const ad = db.prepare('SELECT * FROM merchant_advertisements WHERE id = ?').get(req.params.id);
+    if (!ad) return res.status(404).json({ success: false, error: 'Merchant advertisement not found' });
+
+    const newActive = req.body.is_active !== undefined ? (req.body.is_active ? 1 : 0) : (ad.is_active ? 0 : 1);
+
+    db.prepare(`
+      UPDATE merchant_advertisements
+      SET is_active = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(newActive, ad.id);
+
+    try {
+      db.prepare(`
+        UPDATE offers
+        SET status = ?
+        WHERE id = ?
+      `).run(newActive ? 'active' : 'inactive', ad.id);
+    } catch (_) {}
+
+    recordAdminActivity(req.user.id, 'toggle_merchant_ad_active', 'Merchant Advertisements', ad.id, req, {
+      oldValue: { is_active: ad.is_active },
+      newValue: { is_active: newActive }
+    });
+
+    return res.json({ success: true, message: `Advertisement is now ${newActive ? 'active' : 'inactive'}.`, is_active: newActive });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete('/merchant-ads/:id', requirePermission('advertisements:manage'), (req, res) => {
+  try {
+    const ad = db.prepare('SELECT * FROM merchant_advertisements WHERE id = ?').get(req.params.id);
+    if (!ad) return res.status(404).json({ success: false, error: 'Merchant advertisement not found' });
+
+    db.prepare('DELETE FROM merchant_advertisements WHERE id = ?').run(ad.id);
+    try { db.prepare('DELETE FROM offers WHERE id = ?').run(ad.id); } catch (_) {}
+
+    recordAdminActivity(req.user.id, 'delete_merchant_ad', 'Merchant Advertisements', ad.id, req, { oldValue: ad });
+    return res.json({ success: true, message: 'Merchant advertisement removed successfully' });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
   }

@@ -11,6 +11,7 @@ const {
   SESSION_DURATION_HOURS,
   MAX_ADS_PER_SESSION
 } = require('../config/admob');
+const { reconcileCoinConversions } = require('../utils/coinConversion');
 
 const router = express.Router();
 
@@ -116,138 +117,45 @@ function getTierValues() {
   return defaults;
 }
 
-// Automatic Tier Transition Engine (Deterministic 12-Tier Aging Progression)
+// Two-Coin System Conversion Engine (10,000 Normal Coins = 1 VIP Coin, 365 Days)
 function reconcileTierTransitions(userId) {
-  try {
-    const maturedLots = db.prepare(`
-      SELECT * FROM coin_lots
-      WHERE user_id = ?
-        AND status IN ('ACTIVE', 'PARTIALLY_USED')
-        AND coins_remaining > 0
-        AND tier != 'VIP'
-        AND (
-          (next_transition_at IS NOT NULL AND datetime(next_transition_at) <= datetime('now'))
-          OR
-          (next_transition_at IS NULL AND datetime(expires_at) <= datetime('now'))
-        )
-    `).all(userId);
-
-    if (!maturedLots || maturedLots.length === 0) return;
-
-    maturedLots.forEach(lot => {
-      const currentTier = lot.tier || 'Bronze';
-      const currentTierIndex = VP52_TIERS.indexOf(currentTier);
-      if (currentTierIndex === -1 || currentTierIndex >= VP52_TIERS.length - 1) return; // VIP doesn't convert
-
-      const nextTier = VP52_TIERS[currentTierIndex + 1];
-      const remaining = lot.coins_remaining;
-
-      // Deterministic integer-safe conversion formula:
-      // Bronze -> Elite (indexes 0 to 9): 50% conversion -> Math.floor(remaining / 2)
-      // Legend -> VIP (index 10 -> 11): 5 Legend = 1 VIP -> Math.floor(remaining / 5)
-      let convertedAmount = 0;
-      if (currentTierIndex === 10) { // Legend -> VIP
-        convertedAmount = Math.floor(remaining / 5);
-      } else {
-        convertedAmount = Math.floor(remaining / 2);
-      }
-
-      if (convertedAmount > 0) {
-        const nextTransitionStr = new Date(Date.now() + 30 * 86400 * 1000).toISOString();
-
-        db.prepare(`
-          UPDATE coin_lots
-          SET tier = ?,
-              coins_remaining = ?,
-              original_amount = ?,
-              status = 'ACTIVE',
-              last_transition_at = CURRENT_TIMESTAMP,
-              next_transition_at = ?,
-              expires_at = ?
-          WHERE id = ?
-        `).run(nextTier, convertedAmount, convertedAmount, nextTransitionStr, nextTransitionStr, lot.id);
-
-        db.prepare(`
-          INSERT INTO point_ledger (user_id, transaction_id, type, points, previous_balance, new_balance, reason)
-          VALUES (?, ?, 'TIER_TRANSITION', ?, ?, ?, ?)
-        `).run(
-          userId,
-          `TIER-TRANSITION-${lot.id}-${Date.now()}`,
-          convertedAmount,
-          remaining,
-          convertedAmount,
-          `VP52 Matured Lot Conversion: ${remaining} ${currentTier} -> ${convertedAmount} ${nextTier}`
-        );
-      } else {
-        // Under conversion threshold -> Mark lot as EXPIRED
-        db.prepare(`
-          UPDATE coin_lots
-          SET status = 'EXPIRED', coins_remaining = 0
-          WHERE id = ?
-        `).run(lot.id);
-      }
-    });
-
-    // Recalculate active wallet sum
-    const totalRow = db.prepare(`
-      SELECT SUM(coins_remaining) AS total FROM coin_lots
-      WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED')
-    `).get(userId);
-    const newBal = totalRow ? (totalRow.total || 0) : 0;
-    db.prepare('UPDATE wallets SET balance = ? WHERE user_id = ?').run(newBal, userId);
-  } catch (e) {
-    console.error('Tier transition reconciliation error:', e.message);
-  }
+  return reconcileCoinConversions(userId);
 }
 
-// 1. Get Wallet Balance & Multi-Tier Summary
+// 1. Get Wallet Balance & Two-Coin System Summary
 router.get('/wallet', (req, res) => {
   try {
     const userId = req.user.id;
-    reconcileTierTransitions(userId);
+    reconcileCoinConversions(userId);
 
-    const wallet = db.prepare('SELECT balance, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0, total_redeemed: 0 };
-
-    const tierValues = getTierValues();
-    const tierBreakdown = {};
-    VP52_TIERS.forEach(t => {
-      tierBreakdown[t] = {
-        tier: t,
-        coins: 0,
-        value_inr: 0,
-        unit_value: tierValues[t] || 1,
-        lots_count: 0
-      };
-    });
+    const wallet = db.prepare('SELECT balance, normal_coins, vip_coins, total_earned, total_redeemed FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, normal_coins: 0, vip_coins: 0, total_earned: 0, total_redeemed: 0 };
+    const normalCoins = wallet.normal_coins != null ? wallet.normal_coins : wallet.balance;
+    const vipCoins = wallet.vip_coins || 0;
 
     const activeLots = db.prepare(`
-      SELECT id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, earned_at, expires_at, next_transition_at, status,
-             CAST((julianday(COALESCE(next_transition_at, expires_at)) - julianday('now')) * 24 AS INTEGER) AS hours_until_transition
+      SELECT id, transaction_id, source, coins_earned, coins_remaining, coin_type, tier, original_amount, earned_at, expires_at, convert_at, status,
+             CAST((julianday(COALESCE(convert_at, expires_at)) - julianday('now')) * 24 AS INTEGER) AS hours_until_conversion,
+             CAST(julianday(COALESCE(convert_at, expires_at)) - julianday('now') AS INTEGER) AS days_until_conversion
       FROM coin_lots
       WHERE user_id = ? AND status IN ('ACTIVE', 'PARTIALLY_USED') AND coins_remaining > 0
       ORDER BY earned_at ASC
     `).all(userId);
 
-    let totalAvailableCoins = 0;
-    let totalValueInr = 0;
-
-    activeLots.forEach(lot => {
-      const lotTier = VP52_TIERS.includes(lot.tier) ? lot.tier : 'Bronze';
-      tierBreakdown[lotTier].coins += lot.coins_remaining;
-      tierBreakdown[lotTier].value_inr += lot.coins_remaining * (tierValues[lotTier] || 1);
-      tierBreakdown[lotTier].lots_count += 1;
-
-      totalAvailableCoins += lot.coins_remaining;
-      totalValueInr += lot.coins_remaining * (tierValues[lotTier] || 1);
+    // Backward-compatible breakdown & summary
+    const tierBreakdown = {
+      Normal: { tier: 'Normal', coins: normalCoins, unit_value: 1, lots_count: activeLots.filter(l => l.coin_type !== 'VIP').length },
+      VIP: { tier: 'VIP', coins: vipCoins, unit_value: 10000, lots_count: activeLots.filter(l => l.coin_type === 'VIP').length }
+    };
+    VP52_TIERS.forEach(t => {
+      if (!tierBreakdown[t]) {
+        tierBreakdown[t] = { tier: t, coins: t === 'VIP' ? vipCoins : 0, unit_value: 1, lots_count: 0 };
+      }
     });
 
-    const tierSummary = VP52_TIERS.map(t => ({
-      tier: t,
-      coins: tierBreakdown[t].coins,
-      value_inr: tierBreakdown[t].value_inr,
-      unit_value: tierBreakdown[t].unit_value,
-      lots_count: tierBreakdown[t].lots_count
-    }));
+    const tierSummary = [
+      { tier: 'Normal', coins: normalCoins, unit_value: 1, lots_count: activeLots.filter(l => l.coin_type !== 'VIP').length },
+      { tier: 'VIP', coins: vipCoins, unit_value: 10000, lots_count: activeLots.filter(l => l.coin_type === 'VIP').length }
+    ];
 
     const expiredCoinsRow = db.prepare(`
       SELECT SUM(coins_remaining) AS total_expired FROM coin_lots
@@ -290,12 +198,20 @@ router.get('/wallet', (req, res) => {
       success: true,
       wallet: {
         ...wallet,
-        available_coins: totalAvailableCoins,
-        discount_value_inr: totalValueInr,
+        normal_coins: normalCoins,
+        vip_coins: vipCoins,
+        available_coins: normalCoins,
+        discount_value_inr: normalCoins,
         total_expired: totalExpired,
         earned_today: earnedToday,
         earned_this_month: earnedThisMonth,
         tier_breakdown: tierBreakdown
+      },
+      two_coin_system: {
+        normal_coins: normalCoins,
+        vip_coins: vipCoins,
+        conversion_rate: '10,000 Normal Coins = 1 VIP Coin',
+        conversion_period_days: 365
       },
       tierSummary,
       activeLots,
@@ -597,12 +513,19 @@ router.get('/shops', (req, res) => {
     }
 
     const offers = db.prepare(`
-      SELECT o.id, o.shop_id, o.title, o.discount_percent, o.tier_discounts, o.required_points, o.max_discount_inr, o.valid_until, o.status,
+      SELECT ma.id, ma.merchant_id AS shop_id, ma.title, ma.description,
+             ma.banner_image_url, ma.offer_type, ma.approval_status, ma.is_active,
+             ma.start_date, ma.expiry_date, ma.impressions_count, ma.clicks_count, ma.redemptions_count,
              s.name AS shop_name, s.category AS shop_category, s.image_url AS shop_image, s.address AS shop_address
-      FROM offers o
-      JOIN shops s ON o.shop_id = s.id
-      WHERE LOWER(o.status) = 'active' AND LOWER(s.status) = 'active' AND LOWER(s.verification_status) = 'approved'
-      ORDER BY o.required_points ASC
+      FROM merchant_advertisements ma
+      JOIN shops s ON ma.merchant_id = s.id
+      WHERE ma.approval_status = 'approved'
+        AND ma.is_active = 1
+        AND (ma.start_date IS NULL OR datetime(ma.start_date) <= datetime('now'))
+        AND (ma.expiry_date IS NULL OR datetime(ma.expiry_date) > datetime('now'))
+        AND LOWER(s.status) = 'active'
+        AND LOWER(s.verification_status) = 'approved'
+      ORDER BY ma.created_at DESC
     `).all();
 
     return res.json({
@@ -613,6 +536,62 @@ router.get('/shops', (req, res) => {
   } catch (error) {
     console.error('Fetch customer shops error:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch available offers' });
+  }
+});
+
+// GET /api/customer/offers — Filtered Merchant Advertisements & Offers feed
+router.get('/offers', (req, res) => {
+  try {
+    const offers = db.prepare(`
+      SELECT ma.id, ma.merchant_id, ma.merchant_id AS shop_id, ma.title, ma.description,
+             ma.banner_image_url, ma.offer_type, ma.approval_status, ma.is_active,
+             ma.start_date, ma.expiry_date, ma.impressions_count, ma.clicks_count, ma.redemptions_count,
+             s.name AS shop_name, s.category AS shop_category, s.image_url AS shop_image,
+             s.address AS shop_address, s.phone AS shop_phone
+      FROM merchant_advertisements ma
+      JOIN shops s ON ma.merchant_id = s.id
+      WHERE ma.approval_status = 'approved'
+        AND ma.is_active = 1
+        AND (ma.start_date IS NULL OR datetime(ma.start_date) <= datetime('now'))
+        AND (ma.expiry_date IS NULL OR datetime(ma.expiry_date) > datetime('now'))
+        AND LOWER(s.status) = 'active'
+        AND LOWER(s.verification_status) = 'approved'
+      ORDER BY ma.created_at DESC
+    `).all();
+
+    return res.json({
+      success: true,
+      offers
+    });
+  } catch (err) {
+    console.error('Fetch customer offers error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to fetch offers' });
+  }
+});
+
+// POST /api/customer/merchant-ads/:id/track — Impressions / Clicks / Redemptions metric tracking
+router.post('/merchant-ads/:id/track', (req, res) => {
+  try {
+    const adId = req.params.id;
+    const { event } = req.body || {};
+
+    const ad = db.prepare('SELECT id FROM merchant_advertisements WHERE id = ?').get(adId);
+    if (!ad) {
+      return res.status(404).json({ success: false, error: 'Advertisement not found' });
+    }
+
+    if (event === 'click') {
+      db.prepare('UPDATE merchant_advertisements SET clicks_count = clicks_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(adId);
+    } else if (event === 'redemption') {
+      db.prepare('UPDATE merchant_advertisements SET redemptions_count = redemptions_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(adId);
+    } else {
+      db.prepare('UPDATE merchant_advertisements SET impressions_count = impressions_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(adId);
+    }
+
+    return res.json({ success: true, tracked: true });
+  } catch (err) {
+    console.error('Track merchant ad error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to track event' });
   }
 });
 
@@ -1211,21 +1190,21 @@ router.post('/coin-session/start', (req, res) => {
             const txId = `VP52-SESSION-${s.id}`;
             const existingLot = db.prepare('SELECT id FROM coin_lots WHERE transaction_id = ?').get(txId);
             if (!existingLot) {
-              const lotExpiresAt = new Date(now + 30 * 86400 * 1000).toISOString();
+              const lotExpiresAt = new Date(now + 365 * 86400 * 1000).toISOString();
               db.prepare(`
-                INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, next_transition_at, expires_at, status)
-                VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, 'Bronze', 100, ?, ?, 'ACTIVE')
+                INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, coin_type, tier, original_amount, convert_at, expires_at, status)
+                VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, 'NORMAL', 'Normal', 100, ?, ?, 'ACTIVE')
               `).run(userId, txId, lotExpiresAt, lotExpiresAt);
 
               db.prepare('INSERT OR IGNORE INTO wallets (user_id, balance, total_earned, total_redeemed) VALUES (?, 0, 0, 0)').run(userId);
-              const walletBefore = db.prepare('SELECT balance, total_earned FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0 };
+              const walletBefore = db.prepare('SELECT balance, total_earned, normal_coins FROM wallets WHERE user_id = ?').get(userId) || { balance: 0, total_earned: 0, normal_coins: 0 };
               const prevBal = walletBefore.balance;
               const newBal = prevBal + 100;
               const newLifetime = walletBefore.total_earned + 100;
 
               db.prepare(`
                 UPDATE wallets
-                SET balance = ?, total_earned = ?, updated_at = CURRENT_TIMESTAMP
+                SET balance = ?, normal_coins = COALESCE(normal_coins, balance) + 100, total_earned = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = ?
               `).run(newBal, newLifetime, userId);
 
@@ -1374,10 +1353,10 @@ router.post('/coin-session/complete', (req, res) => {
       let newLifetime = walletBefore.total_earned;
 
       if (!existingLot) {
-        const expiresAt = new Date(now + 30 * 86400 * 1000).toISOString();
+        const expiresAt = new Date(now + 365 * 86400 * 1000).toISOString();
         db.prepare(`
-          INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, tier, original_amount, next_transition_at, expires_at, status)
-          VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, 'Bronze', 100, ?, ?, 'ACTIVE')
+          INSERT INTO coin_lots (user_id, transaction_id, source, coins_earned, coins_remaining, coin_type, tier, original_amount, convert_at, expires_at, status)
+          VALUES (?, ?, 'VP52_6HR_SESSION', 100, 100, 'NORMAL', 'Normal', 100, ?, ?, 'ACTIVE')
         `).run(userId, txId, expiresAt, expiresAt);
 
         newBal = prevBal + 100;
@@ -1385,7 +1364,7 @@ router.post('/coin-session/complete', (req, res) => {
 
         db.prepare(`
           UPDATE wallets
-          SET balance = ?, total_earned = ?, updated_at = CURRENT_TIMESTAMP
+          SET balance = ?, normal_coins = COALESCE(normal_coins, balance) + 100, total_earned = ?, updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ?
         `).run(newBal, newLifetime, userId);
 
@@ -1982,48 +1961,22 @@ router.post('/reward-session/watch-ad', (req, res) => {
   }
 });
 
-// 7. CUSTOMER LEVEL PROGRESSION & ENGINE (Level != Coins)
+// 7. CUSTOMER LEVEL PROGRESSION & ENGINE (Deprecated Tier System -> Two-Coin System)
 router.get('/level', (req, res) => {
   try {
     const userId = req.user.id;
-    const wallet = db.prepare('SELECT total_earned FROM wallets WHERE user_id = ?').get(userId) || { total_earned: 0 };
-    const lifetimePoints = wallet.total_earned;
-
-    const levels = db.prepare('SELECT * FROM reward_levels ORDER BY min_points ASC').all();
-
-    let currentLevel = 'Basic';
-    let nextLevel = 'Silver';
-    let minForNext = 100;
-    let benefits = 'Standard Membership & Access to local shop offers';
-    let discountCapPercent = 5;
-
-    for (let i = 0; i < levels.length; i++) {
-      if (lifetimePoints >= levels[i].min_points) {
-        currentLevel = levels[i].level_name;
-        benefits = levels[i].benefits;
-        discountCapPercent = levels[i].discount_cap_percent || 5;
-
-        if (i < levels.length - 1) {
-          nextLevel = levels[i + 1].level_name;
-          minForNext = levels[i + 1].min_points;
-        } else {
-          nextLevel = 'Max Level';
-          minForNext = levels[i].min_points;
-        }
-      }
-    }
-
-    const progressPercent = nextLevel === 'Max Level' ? 100 : Math.min(100, Math.floor((lifetimePoints / minForNext) * 100));
+    const wallet = db.prepare('SELECT total_earned, balance, normal_coins, vip_coins FROM wallets WHERE user_id = ?').get(userId) || { total_earned: 0, balance: 0, normal_coins: 0, vip_coins: 0 };
+    const lifetimePoints = wallet.total_earned || 0;
 
     return res.json({
       success: true,
-      currentLevel,
-      nextLevel,
+      currentLevel: 'Standard',
+      nextLevel: 'Standard',
       lifetimeCoins: lifetimePoints,
-      minForNext,
-      progressPercent,
-      benefits,
-      discountCapPercent
+      minForNext: 0,
+      progressPercent: 100,
+      benefits: 'Two-Coin System: Normal Coins (₹1) & VIP Coins (10,000 : 1 conversion)',
+      discountCapPercent: 100
     });
   } catch (error) {
     console.error('Fetch customer level error:', error);
@@ -2540,9 +2493,9 @@ router.post('/merchant-qr/pay', (req, res) => {
       const custNewBalance = custPrevBalance - coinsToPay;
       db.prepare(`
         UPDATE wallets
-        SET balance = ?, total_redeemed = total_redeemed + ?, updated_at = CURRENT_TIMESTAMP
+        SET balance = ?, normal_coins = MAX(0, COALESCE(normal_coins, balance) - ?), total_redeemed = total_redeemed + ?, updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
-      `).run(custNewBalance, coinsToPay, userId);
+      `).run(custNewBalance, coinsToPay, coinsToPay, userId);
 
       // 2. Consume FIFO lots (preserving PARTIALLY_USED vs USED status)
       let needed = coinsToPay;

@@ -18,13 +18,20 @@ import {
   CheckCircle2,
   AlertTriangle,
   Layers,
-  ShieldCheck
+  ShieldCheck,
+  Store,
+  Check,
+  XCircle,
+  Tag,
+  Search,
+  Filter,
+  Clock
 } from 'lucide-react';
 
 export default function AdminAdvertisements() {
   const { token } = useAuth();
   const { t, locale } = useI18n();
-  const [activeTab, setActiveTab] = useState('admob'); // 'admob' | 'banners'
+  const [activeTab, setActiveTab] = useState('merchant_ads'); // 'merchant_ads' | 'admob' | 'banners'
 
   const getStatusLabel = (status) => {
     const normalized = String(status || '').toLowerCase();
@@ -42,6 +49,27 @@ export default function AdminAdvertisements() {
   const [ads, setAds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [placementFilter, setPlacementFilter] = useState('all');
+
+  // Merchant Advertisements State
+  const [merchantAds, setMerchantAds] = useState([]);
+  const [merchantAdsLoading, setMerchantAdsLoading] = useState(false);
+  const [merchantStatusFilter, setMerchantStatusFilter] = useState('all');
+  const [merchantTypeFilter, setMerchantTypeFilter] = useState('all');
+  const [merchantSearchQuery, setMerchantSearchQuery] = useState('');
+
+  // Merchant Ad Edit Modal State
+  const [isMerchantAdModalOpen, setIsMerchantAdModalOpen] = useState(false);
+  const [editingMerchantAd, setEditingMerchantAd] = useState(null);
+  const [merchantAdFormData, setMerchantAdFormData] = useState({
+    title: '',
+    description: '',
+    banner_image_url: '',
+    offer_type: 'PROMOTIONAL_OFFER',
+    start_date: '',
+    expiry_date: ''
+  });
+  const [merchantAdModalError, setMerchantAdModalError] = useState('');
+  const [isMerchantAdSubmitting, setIsMerchantAdSubmitting] = useState(false);
 
   // AdMob State
   const [admobData, setAdmobData] = useState(null);
@@ -62,6 +90,24 @@ export default function AdminAdvertisements() {
   });
   const [modalError, setModalError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchMerchantAds = () => {
+    setMerchantAdsLoading(true);
+    const params = new URLSearchParams();
+    if (merchantStatusFilter !== 'all') params.set('status', merchantStatusFilter);
+    if (merchantTypeFilter !== 'all') params.set('offer_type', merchantTypeFilter);
+    if (merchantSearchQuery.trim()) params.set('search', merchantSearchQuery.trim());
+    const q = params.toString() ? `?${params.toString()}` : '';
+
+    fetch(`/api/admin/merchant-ads${q}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(parseApiResponse)
+      .then(parsed => {
+        const d = parsed.data;
+        if (parsed.ok && d && d.success) setMerchantAds(d.merchant_ads || []);
+      })
+      .catch(console.error)
+      .finally(() => setMerchantAdsLoading(false));
+  };
 
   const fetchAds = () => {
     setLoading(true);
@@ -92,9 +138,122 @@ export default function AdminAdvertisements() {
 
   useEffect(() => {
     if (!token) return;
-    if (activeTab === 'admob') fetchAdmobData();
+    if (activeTab === 'merchant_ads') fetchMerchantAds();
+    else if (activeTab === 'admob') fetchAdmobData();
     else fetchAds();
-  }, [token, activeTab, placementFilter]);
+  }, [token, activeTab, placementFilter, merchantStatusFilter, merchantTypeFilter]);
+
+  const handleApproveMerchantAd = async (id) => {
+    try {
+      const res = await fetch(`/api/admin/merchant-ads/${id}/approval`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ approval_status: 'APPROVED' })
+      });
+      const parsed = await parseApiResponse(res);
+      if (parsed.ok && parsed.data?.success) {
+        fetchMerchantAds();
+      } else {
+        alert(resolveApiErrorMessage(parsed, t, 'failedSaveAdErr'));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleRejectMerchantAd = async (id) => {
+    try {
+      const res = await fetch(`/api/admin/merchant-ads/${id}/approval`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ approval_status: 'REJECTED' })
+      });
+      const parsed = await parseApiResponse(res);
+      if (parsed.ok && parsed.data?.success) {
+        fetchMerchantAds();
+      } else {
+        alert(resolveApiErrorMessage(parsed, t, 'failedSaveAdErr'));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleMerchantAdStatus = async (id, currentActive) => {
+    try {
+      const res = await fetch(`/api/admin/merchant-ads/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ is_active: currentActive ? 0 : 1 })
+      });
+      const parsed = await parseApiResponse(res);
+      if (parsed.ok && parsed.data?.success) {
+        fetchMerchantAds();
+      } else {
+        alert(resolveApiErrorMessage(parsed, t, 'failedSaveAdErr'));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteMerchantAd = async (id) => {
+    if (!window.confirm(t('deleteMerchantAdConfirm'))) return;
+    try {
+      const res = await fetch(`/api/admin/merchant-ads/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const parsed = await parseApiResponse(res);
+      if (parsed.ok && parsed.data?.success) {
+        fetchMerchantAds();
+      } else {
+        alert(resolveApiErrorMessage(parsed, t, 'failedSaveAdErr'));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleOpenEditMerchantAd = (ad) => {
+    setEditingMerchantAd(ad);
+    setMerchantAdFormData({
+      title: ad.title || '',
+      description: ad.description || '',
+      banner_image_url: ad.banner_image_url || '',
+      offer_type: ad.offer_type || 'PROMOTIONAL_OFFER',
+      start_date: ad.start_date ? ad.start_date.split('T')[0] : '',
+      expiry_date: ad.expiry_date ? ad.expiry_date.split('T')[0] : ''
+    });
+    setMerchantAdModalError('');
+    setIsMerchantAdModalOpen(true);
+  };
+
+  const handleSubmitMerchantAdEdit = async (e) => {
+    e.preventDefault();
+    if (!editingMerchantAd) return;
+    setIsMerchantAdSubmitting(true);
+    setMerchantAdModalError('');
+
+    try {
+      const res = await fetch(`/api/admin/merchant-ads/${editingMerchantAd.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(merchantAdFormData)
+      });
+      const parsed = await parseApiResponse(res);
+      if (parsed.ok && parsed.data?.success) {
+        setIsMerchantAdModalOpen(false);
+        fetchMerchantAds();
+      } else {
+        setMerchantAdModalError(resolveApiErrorMessage(parsed, t, 'failedSaveAdErr'));
+      }
+    } catch (err) {
+      setMerchantAdModalError(resolveNetworkErrorMessage(err, t, 'failedSaveAdErr'));
+    } finally {
+      setIsMerchantAdSubmitting(false);
+    }
+  };
 
   const handleOpenAdd = () => {
     setEditingAd(null);
@@ -217,7 +376,21 @@ export default function AdminAdvertisements() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {activeTab === 'admob' ? (
+          {activeTab === 'merchant_ads' && (
+            <button
+              type="button"
+              onClick={fetchMerchantAds}
+              style={{
+                background: '#181818', border: '1px solid rgba(212, 175, 55, 0.3)',
+                color: '#D4AF37', padding: '8px 16px', borderRadius: '10px',
+                fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+              }}
+            >
+              <RefreshCw size={14} className={merchantAdsLoading ? 'spin' : ''} /> {t('adminRefreshBtn')}
+            </button>
+          )}
+
+          {activeTab === 'admob' && (
             <button
               type="button"
               onClick={fetchAdmobData}
@@ -229,7 +402,9 @@ export default function AdminAdvertisements() {
             >
               <RefreshCw size={14} className={admobLoading ? 'spin' : ''} /> {t('refreshDiagnosticsBtn')}
             </button>
-          ) : (
+          )}
+
+          {activeTab === 'banners' && (
             <>
               <select
                 value={placementFilter}
@@ -268,9 +443,11 @@ export default function AdminAdvertisements() {
         marginBottom: '20px',
         background: '#0D0D0D',
         borderRadius: '12px 12px 0 0',
-        padding: '0 12px'
+        padding: '0 12px',
+        overflowX: 'auto'
       }}>
         {[
+          { id: 'merchant_ads', label: t('tabMerchantAds'), icon: Store },
           { id: 'admob', label: t('tabAdmobNativeAds'), icon: Tv },
           { id: 'banners', label: t('tabCommercialBanners'), icon: ImageIcon }
         ].map(tab => {
@@ -291,7 +468,8 @@ export default function AdminAdvertisements() {
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px'
+                gap: '8px',
+                whiteSpace: 'nowrap'
               }}
             >
               <Icon size={16} /> {tab.label}
@@ -299,6 +477,421 @@ export default function AdminAdvertisements() {
           );
         })}
       </div>
+
+      {/* TAB 0: MERCHANT ADVERTISEMENTS MANAGEMENT */}
+      {activeTab === 'merchant_ads' && (
+        <div>
+          {/* Overview Metrics Cards */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '14px',
+            marginBottom: '20px'
+          }}>
+            <div style={{ background: '#0E0E0E', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '14px', padding: '16px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0' }}>{t('kpiMerchantAdsUpper')}</span>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: '#FFFFFF', marginTop: '4px' }}>
+                {merchantAds.length.toLocaleString(locale)}
+              </div>
+              <span style={{ fontSize: '10px', color: '#A0A0A0' }}>{t('statusAll')}</span>
+            </div>
+
+            <div style={{ background: '#0E0E0E', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '14px', padding: '16px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0' }}>{t('statusPending')}</span>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: merchantAds.filter(a => a.approval_status === 'PENDING').length > 0 ? '#eab308' : '#888', marginTop: '4px' }}>
+                {merchantAds.filter(a => a.approval_status === 'PENDING').length.toLocaleString(locale)}
+              </div>
+              <span style={{ fontSize: '10px', color: '#eab308' }}>{t('kpiMerchantAdsSub', { pending: merchantAds.filter(a => a.approval_status === 'PENDING').length })}</span>
+            </div>
+
+            <div style={{ background: '#0E0E0E', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '14px', padding: '16px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0' }}>{t('statusApproved')} & {t('statusActive')}</span>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: '#22c55e', marginTop: '4px' }}>
+                {merchantAds.filter(a => a.approval_status === 'APPROVED' && a.is_active).length.toLocaleString(locale)}
+              </div>
+              <span style={{ fontSize: '10px', color: '#22c55e' }}>{t('customerAppTitle')}</span>
+            </div>
+
+            <div style={{ background: '#0E0E0E', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '14px', padding: '16px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0' }}>{t('impressionsCount')}</span>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: '#3b82f6', marginTop: '4px' }}>
+                {merchantAds.reduce((sum, a) => sum + (a.impressions_count || 0), 0).toLocaleString(locale)}
+              </div>
+              <span style={{ fontSize: '10px', color: '#3b82f6' }}>{t('renderedToCustomersSub')}</span>
+            </div>
+
+            <div style={{ background: '#0E0E0E', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '14px', padding: '16px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0' }}>{t('clicksCount')}</span>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: '#F2D675', marginTop: '4px' }}>
+                {merchantAds.reduce((sum, a) => sum + (a.clicks_count || 0), 0).toLocaleString(locale)}
+              </div>
+              <span style={{ fontSize: '10px', color: '#F2D675' }}>{t('customerEngagementsSub')}</span>
+            </div>
+
+            <div style={{ background: '#0E0E0E', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '14px', padding: '16px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0' }}>{t('redemptionsCount')}</span>
+              <div style={{ fontSize: '24px', fontWeight: 900, color: '#10b981', marginTop: '4px' }}>
+                {merchantAds.reduce((sum, a) => sum + (a.redemptions_count || 0), 0).toLocaleString(locale)}
+              </div>
+              <span style={{ fontSize: '10px', color: '#10b981' }}>{t('shopPortalTitle')}</span>
+            </div>
+          </div>
+
+          {/* Filters & Search Toolbar */}
+          <div style={{
+            background: '#0D0D0D',
+            border: '1px solid rgba(212, 175, 55, 0.2)',
+            borderRadius: '16px',
+            padding: '16px 20px',
+            marginBottom: '20px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px'
+          }}>
+            <form
+              onSubmit={e => { e.preventDefault(); fetchMerchantAds(); }}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 280px' }}
+            >
+              <div style={{
+                position: 'relative', width: '100%', maxWidth: '360px', display: 'flex', alignItems: 'center'
+              }}>
+                <Search size={16} color="#888" style={{ position: 'absolute', left: '12px' }} />
+                <input
+                  type="text"
+                  placeholder={t('searchMerchantAdsPlaceholder')}
+                  value={merchantSearchQuery}
+                  onChange={e => setMerchantSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    background: '#141414',
+                    border: '1px solid rgba(212, 175, 55, 0.25)',
+                    borderRadius: '10px',
+                    padding: '8px 12px 8px 36px',
+                    color: '#FFFFFF',
+                    fontSize: '12px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+              <button
+                type="submit"
+                style={{
+                  background: '#1A1A1A',
+                  border: '1px solid rgba(212, 175, 55, 0.3)',
+                  color: '#D4AF37',
+                  padding: '8px 14px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {t('searchPlaceholder')?.split(' ')[0] || 'Search'}
+              </button>
+            </form>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#888', fontWeight: 700 }}>{t('filterApprovalStatus')}:</span>
+                <select
+                  value={merchantStatusFilter}
+                  onChange={e => setMerchantStatusFilter(e.target.value)}
+                  style={{
+                    background: '#141414',
+                    border: '1px solid rgba(212, 175, 55, 0.25)',
+                    color: '#FFFFFF',
+                    borderRadius: '10px',
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="all">{t('statusAll')}</option>
+                  <option value="pending">{t('statusPending')}</option>
+                  <option value="approved">{t('statusApproved')}</option>
+                  <option value="rejected">{t('statusRejected')}</option>
+                  <option value="active">{t('statusActive')}</option>
+                  <option value="expired">{t('statusExpired')}</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#888', fontWeight: 700 }}>{t('filterOfferType')}:</span>
+                <select
+                  value={merchantTypeFilter}
+                  onChange={e => setMerchantTypeFilter(e.target.value)}
+                  style={{
+                    background: '#141414',
+                    border: '1px solid rgba(212, 175, 55, 0.25)',
+                    color: '#FFFFFF',
+                    borderRadius: '10px',
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="all">{t('typeAll')}</option>
+                  <option value="PROMOTIONAL_OFFER">{t('typePromotionalOffer')}</option>
+                  <option value="BANNER">{t('typeBanner')}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Merchant Ads Cards Grid */}
+          {merchantAdsLoading ? (
+            <div style={{ padding: '60px', textAlign: 'center', color: '#888' }}>
+              <RefreshCw size={28} className="spin" style={{ margin: '0 auto 12px', color: '#D4AF37' }} />
+              <div>{t('adminLoadingMetrics')}</div>
+            </div>
+          ) : merchantAds.length === 0 ? (
+            <div style={{
+              background: '#0D0D0D',
+              border: '1px solid rgba(212, 175, 55, 0.15)',
+              borderRadius: '16px',
+              padding: '60px 20px',
+              textAlign: 'center',
+              color: '#888'
+            }}>
+              <Store size={40} style={{ margin: '0 auto 12px', color: '#555' }} />
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#FFF', marginBottom: '6px' }}>
+                {t('noMerchantAdsFound')}
+              </div>
+              <div style={{ fontSize: '12px', color: '#888' }}>
+                {t('merchantAdsSub')}
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+              gap: '18px',
+              marginBottom: '30px'
+            }}>
+              {merchantAds.map(ad => {
+                const isExpired = ad.expiry_date && new Date(ad.expiry_date) < new Date();
+                const ctr = ad.ctr_percent != null ? ad.ctr_percent : (ad.impressions_count > 0 ? ((ad.clicks_count / ad.impressions_count) * 100).toFixed(1) : '0.0');
+
+                return (
+                  <div
+                    key={ad.id}
+                    style={{
+                      background: '#0E0E0E',
+                      border: ad.approval_status === 'PENDING'
+                        ? '1px solid rgba(234, 179, 8, 0.4)'
+                        : ad.is_active
+                        ? '1px solid rgba(212, 175, 55, 0.3)'
+                        : '1px solid #222',
+                      borderRadius: '16px',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      boxShadow: '0 8px 30px rgba(0,0,0,0.5)'
+                    }}
+                  >
+                    {/* Banner Image Preview */}
+                    <div style={{ height: '140px', position: 'relative', background: '#181818' }}>
+                      <img
+                        src={resolveMediaUrl(ad.banner_image_url)}
+                        alt={ad.title}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={e => { e.target.src = 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=800&q=80'; }}
+                      />
+                      
+                      {/* Status Badges Overlay */}
+                      <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'flex', gap: '6px' }}>
+                        <span style={{
+                          padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800,
+                          background: ad.approval_status === 'APPROVED' ? 'rgba(34, 197, 94, 0.9)' :
+                                      ad.approval_status === 'REJECTED' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(234, 179, 8, 0.9)',
+                          color: '#050505'
+                        }}>
+                          {ad.approval_status === 'APPROVED' ? `✓ ${t('statusApproved')}` :
+                           ad.approval_status === 'REJECTED' ? `✕ ${t('statusRejected')}` : `⏳ ${t('statusPending')}`}
+                        </span>
+
+                        <span style={{
+                          padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800,
+                          background: ad.is_active ? 'rgba(34, 197, 94, 0.2)' : 'rgba(100, 100, 100, 0.4)',
+                          color: ad.is_active ? '#22c55e' : '#A0A0A0',
+                          border: ad.is_active ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid #444'
+                        }}>
+                          {ad.is_active ? t('statusActive') : t('statusInactive')}
+                        </span>
+                      </div>
+
+                      {isExpired && (
+                        <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
+                          <span style={{
+                            padding: '3px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800,
+                            background: 'rgba(239, 68, 68, 0.9)', color: '#FFFFFF'
+                          }}>
+                            {t('statusExpired')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Body */}
+                    <div style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div>
+                        {/* Merchant Details Row */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Store size={14} color="#D4AF37" />
+                            <span style={{ fontSize: '12px', fontWeight: 800, color: '#FFFFFF' }}>
+                              {ad.merchant_name || t('merchantRole')}
+                            </span>
+                          </div>
+                          {ad.merchant_shop_code && (
+                            <span style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 800, color: '#D4AF37', background: 'rgba(212, 175, 55, 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(212, 175, 55, 0.2)' }}>
+                              {ad.merchant_shop_code}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Title & Description */}
+                        <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#FFFFFF', margin: '0 0 6px 0' }}>
+                          {ad.title}
+                        </h3>
+                        {ad.description && (
+                          <p style={{ fontSize: '12px', color: '#A0A0A0', margin: '0 0 10px 0', lineHeight: 1.4 }}>
+                            {ad.description}
+                          </p>
+                        )}
+
+                        {/* Type & Dates Row */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#888', marginBottom: '12px', flexWrap: 'wrap', gap: '6px' }}>
+                          <span style={{ background: '#161616', padding: '3px 8px', borderRadius: '6px', color: '#D4AF37', fontWeight: 700 }}>
+                            {ad.offer_type === 'BANNER' ? t('typeBanner') : t('typePromotionalOffer')}
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Calendar size={12} color="#888" />
+                            {ad.start_date ? ad.start_date.split('T')[0] : '—'} → {ad.expiry_date ? ad.expiry_date.split('T')[0] : '—'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Performance Metrics Bar */}
+                      <div style={{
+                        background: '#121212',
+                        border: '1px solid rgba(212, 175, 55, 0.12)',
+                        borderRadius: '10px',
+                        padding: '10px 12px',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(4, 1fr)',
+                        textAlign: 'center',
+                        gap: '6px',
+                        marginBottom: '14px'
+                      }}>
+                        <div>
+                          <div style={{ fontSize: '9px', color: '#888', fontWeight: 700 }}>{t('impressionsCount')}</div>
+                          <div style={{ fontSize: '13px', fontWeight: 900, color: '#3b82f6', marginTop: '2px' }}>
+                            {(ad.impressions_count || 0).toLocaleString(locale)}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '9px', color: '#888', fontWeight: 700 }}>{t('clicksCount')}</div>
+                          <div style={{ fontSize: '13px', fontWeight: 900, color: '#F2D675', marginTop: '2px' }}>
+                            {(ad.clicks_count || 0).toLocaleString(locale)}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '9px', color: '#888', fontWeight: 700 }}>{t('ctrPercent')}</div>
+                          <div style={{ fontSize: '13px', fontWeight: 900, color: '#22c55e', marginTop: '2px' }}>
+                            {ctr}%
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '9px', color: '#888', fontWeight: 700 }}>{t('redemptionsCount')}</div>
+                          <div style={{ fontSize: '13px', fontWeight: 900, color: '#10b981', marginTop: '2px' }}>
+                            {(ad.redemptions_count || 0).toLocaleString(locale)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons Toolbar */}
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid #1A1A1A' }}>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {ad.approval_status !== 'APPROVED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleApproveMerchantAd(ad.id)}
+                              style={{
+                                background: '#16331a', border: '1px solid #22c55e', color: '#22c55e',
+                                padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '4px'
+                              }}
+                            >
+                              <Check size={12} /> {t('approveAdBtn')}
+                            </button>
+                          )}
+
+                          {ad.approval_status !== 'REJECTED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRejectMerchantAd(ad.id)}
+                              style={{
+                                background: '#331616', border: '1px solid #ef4444', color: '#ef4444',
+                                padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '4px'
+                              }}
+                            >
+                              <XCircle size={12} /> {t('rejectAdBtn')}
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMerchantAdStatus(ad.id, ad.is_active)}
+                            style={{
+                              background: ad.is_active ? '#242410' : '#1A1A1A',
+                              border: ad.is_active ? '1px solid #D4AF37' : '1px solid #444',
+                              color: ad.is_active ? '#F2D675' : '#888',
+                              padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                          >
+                            <Power size={12} /> {ad.is_active ? t('deactivateAdBtn') : t('activateAdBtn')}
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditMerchantAd(ad)}
+                            style={{
+                              background: '#1A1A1A', border: '1px solid #333', color: '#FFFFFF',
+                              padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                          >
+                            <Edit2 size={12} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMerchantAd(ad.id)}
+                            style={{
+                              background: '#221111', border: '1px solid #442222', color: '#ef4444',
+                              padding: '6px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: '4px'
+                            }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TAB 1: GOOGLE ADMOB CONFIGURATION & DIAGNOSTICS */}
       {activeTab === 'admob' && (
@@ -792,6 +1385,167 @@ export default function AdminAdvertisements() {
                   }}
                 >
                   {isSubmitting ? t('adminSavingProgress') : editingAd ? t('updateBannerBtn') : t('createBannerBtn')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Merchant Advertisement Modal */}
+      {isMerchantAdModalOpen && (
+        <div role="dialog" aria-modal="true" style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+          zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
+        }}>
+          <div style={{
+            background: '#0E0E0E', border: '1px solid #D4AF37', borderRadius: '16px',
+            width: '500px', maxWidth: '100%', padding: '24px', boxShadow: '0 16px 40px rgba(0,0,0,0.9)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ fontSize: '16px', fontWeight: 800, margin: 0, color: '#FFFFFF' }}>
+                  {t('editMerchantAdTitle')}
+                </h3>
+                <span style={{ fontSize: '11px', color: '#A0A0A0' }}>
+                  {t('editMerchantAdSub')}
+                </span>
+              </div>
+              <button
+                type="button"
+                aria-label={t('closeModalAria')}
+                onClick={() => setIsMerchantAdModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {merchantAdModalError && (
+              <div style={{ padding: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', borderRadius: '8px', color: '#ef4444', fontSize: '12px', marginBottom: '14px' }}>
+                {merchantAdModalError}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitMerchantAdEdit}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#A0A0A0', marginBottom: '4px' }}>
+                  {t('adTitleRequired')}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={merchantAdFormData.title}
+                  onChange={e => setMerchantAdFormData({ ...merchantAdFormData, title: e.target.value })}
+                  style={{
+                    width: '100%', background: '#141414', border: '1px solid rgba(212, 175, 55, 0.3)',
+                    borderRadius: '8px', padding: '8px 12px', color: '#FFFFFF', fontSize: '13px', outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#A0A0A0', marginBottom: '4px' }}>
+                  {t('descriptionLabel') || 'Description'}
+                </label>
+                <textarea
+                  rows={3}
+                  value={merchantAdFormData.description}
+                  onChange={e => setMerchantAdFormData({ ...merchantAdFormData, description: e.target.value })}
+                  style={{
+                    width: '100%', background: '#141414', border: '1px solid rgba(212, 175, 55, 0.3)',
+                    borderRadius: '8px', padding: '8px 12px', color: '#FFFFFF', fontSize: '13px', outline: 'none',
+                    resize: 'vertical'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#A0A0A0', marginBottom: '4px' }}>
+                  {t('bannerImageUrlRequired')}
+                </label>
+                <input
+                  type="text"
+                  value={merchantAdFormData.banner_image_url}
+                  onChange={e => setMerchantAdFormData({ ...merchantAdFormData, banner_image_url: e.target.value })}
+                  placeholder="https://... or /uploads/..."
+                  style={{
+                    width: '100%', background: '#141414', border: '1px solid rgba(212, 175, 55, 0.3)',
+                    borderRadius: '8px', padding: '8px 12px', color: '#FFFFFF', fontSize: '13px', outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#A0A0A0', marginBottom: '4px' }}>
+                  {t('filterOfferType')}
+                </label>
+                <select
+                  value={merchantAdFormData.offer_type}
+                  onChange={e => setMerchantAdFormData({ ...merchantAdFormData, offer_type: e.target.value })}
+                  style={{
+                    width: '100%', background: '#141414', border: '1px solid rgba(212, 175, 55, 0.3)',
+                    borderRadius: '8px', padding: '8px 12px', color: '#FFFFFF', fontSize: '13px', outline: 'none'
+                  }}
+                >
+                  <option value="PROMOTIONAL_OFFER">{t('typePromotionalOffer')}</option>
+                  <option value="BANNER">{t('typeBanner')}</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#A0A0A0', marginBottom: '4px' }}>
+                    {t('startDateLabel')}
+                  </label>
+                  <input
+                    type="date"
+                    value={merchantAdFormData.start_date}
+                    onChange={e => setMerchantAdFormData({ ...merchantAdFormData, start_date: e.target.value })}
+                    style={{
+                      width: '100%', background: '#141414', border: '1px solid rgba(212, 175, 55, 0.3)',
+                      borderRadius: '8px', padding: '8px 12px', color: '#FFFFFF', fontSize: '13px', outline: 'none'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#A0A0A0', marginBottom: '4px' }}>
+                    {t('endDateLabel')}
+                  </label>
+                  <input
+                    type="date"
+                    value={merchantAdFormData.expiry_date}
+                    onChange={e => setMerchantAdFormData({ ...merchantAdFormData, expiry_date: e.target.value })}
+                    style={{
+                      width: '100%', background: '#141414', border: '1px solid rgba(212, 175, 55, 0.3)',
+                      borderRadius: '8px', padding: '8px 12px', color: '#FFFFFF', fontSize: '13px', outline: 'none'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsMerchantAdModalOpen(false)}
+                  style={{
+                    padding: '8px 14px', borderRadius: '8px', background: '#1A1A1A', border: '1px solid #333',
+                    color: '#888', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
+                  }}
+                >
+                  {t('cancelBtn')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isMerchantAdSubmitting}
+                  style={{
+                    padding: '8px 18px', borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #C9A227 0%, #F2D675 100%)',
+                    border: 'none', color: '#050505', fontSize: '12px', fontWeight: 900, cursor: 'pointer'
+                  }}
+                >
+                  {isMerchantAdSubmitting ? t('adminSavingProgress') : t('saveMerchantAdBtn')}
                 </button>
               </div>
             </form>

@@ -181,7 +181,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Critical Attention Banners (Pending approvals / Fraud alerts) */}
-      {(s.pendingMerchants > 0 || s.fraudAlerts > 0) && (
+      {(s.pendingMerchants > 0 || s.fraudAlerts > 0 || s.pendingMerchantAds > 0) && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '14px', marginBottom: '24px' }}>
           {s.pendingMerchants > 0 && (
             <div
@@ -215,6 +215,39 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <ArrowRight size={18} color="#eab308" />
+            </div>
+          )}
+
+          {s.pendingMerchantAds > 0 && (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate('/admin/advertisements')}
+              onKeyDown={(e) => handleCardKey(e, '/admin/advertisements')}
+              style={{
+                background: 'linear-gradient(135deg, #1A1500 0%, #291F00 100%)',
+                border: '1px solid #D4AF37',
+                borderRadius: '14px',
+                padding: '14px 18px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                boxShadow: '0 4px 16px rgba(212, 175, 55, 0.15)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#D4AF37', color: '#050505', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ShoppingBag size={22} color="#050505" />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#FFFFFF' }}>
+                    {t('kpiMerchantAdsSub', { pending: (s.pendingMerchantAds || 0).toLocaleString(locale) })}
+                  </h4>
+                  <span style={{ fontSize: '11px', color: '#F2D675' }}>{t('merchantAdsTitle')}</span>
+                </div>
+              </div>
+              <ArrowRight size={18} color="#D4AF37" />
             </div>
           )}
 
@@ -418,7 +451,7 @@ export default function AdminDashboard() {
           <div style={{ fontSize: '10px', color: '#A0A0A0', marginTop: '4px', fontWeight: 600 }}>{t('kpiSequentialStartedSub', { count: (s.totalSessionsStarted || 0).toLocaleString(locale) })}</div>
         </div>
 
-        {/* Card 16: AdMob & Native Ads */}
+        {/* Card 16: AdMob & Rewarded Ads */}
         <div role="button" tabIndex={0} onClick={() => navigate('/admin/advertisements')} onKeyDown={(e) => handleCardKey(e, '/admin/advertisements')} className="kpi-card" style={{ background: '#0E0E0E', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '14px', padding: '16px', cursor: 'pointer' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0' }}>{t('kpiAdmobImpressionsUpper')}</span>
@@ -426,6 +459,18 @@ export default function AdminDashboard() {
           </div>
           <div style={{ fontSize: '26px', fontWeight: 900, color: '#3b82f6' }}>{(s.confirmedAdImpressions || 0).toLocaleString(locale)}</div>
           <div style={{ fontSize: '10px', color: '#A0A0A0', marginTop: '4px', fontWeight: 600 }}>{t('kpiAdPlacementsReqSub', { count: (s.totalAdRequests || 0).toLocaleString(locale) })}</div>
+        </div>
+
+        {/* Card 17: Merchant Advertisements */}
+        <div role="button" tabIndex={0} onClick={() => navigate('/admin/advertisements')} onKeyDown={(e) => handleCardKey(e, '/admin/advertisements')} className="kpi-card" style={{ background: '#0E0E0E', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '14px', padding: '16px', cursor: 'pointer' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#A0A0A0' }}>{t('kpiMerchantAdsUpper')}</span>
+            <ShoppingBag size={16} color="#F2D675" />
+          </div>
+          <div style={{ fontSize: '26px', fontWeight: 900, color: '#F2D675' }}>{(s.merchantAdsCount || 0).toLocaleString(locale)}</div>
+          <div style={{ fontSize: '10px', color: s.pendingMerchantAds > 0 ? '#eab308' : '#22c55e', marginTop: '4px', fontWeight: 600 }}>
+            {t('kpiMerchantAdsSub', { pending: (s.pendingMerchantAds || 0).toLocaleString(locale) })}
+          </div>
         </div>
 
         {/* Card 17: Merchant Coin Balances */}
